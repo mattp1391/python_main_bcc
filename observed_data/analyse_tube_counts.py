@@ -3,6 +3,7 @@ import numpy
 from tqdm import tqdm
 from datetime import datetime, timedelta
 import os
+from gis import osm_tools
 
 
 input_file = r"C:\General\BCC_Software\Python\python_repository\development_files\analyse_tube_counts\inputs\13759 " \
@@ -12,6 +13,7 @@ input_file = r"C:\General\BCC_Software\Python\python_repository\development_file
 input_folder = r"C:\General\BCC_Software\Python\python_repository\development_files\analyse_tube_counts\inputs"
 output_file = r"C:\General\BCC_Software\Python\python_repository\development_files\analyse_tube_counts\outputs" \
               r"\tubes_combined.csv "
+
 
 def replace_multiple_spaces(text_string):
     corrected_string = " ".join(text_string.split())
@@ -46,7 +48,7 @@ def determine_headings(text_str):
 
 def find_four_digit_start_time(time_str):
     start_time = time_str.split(' ')[0]
-    start_time = start_time.replace(':', '')
+    start_time = int(start_time.replace(':', ''))
     start_time = f"{start_time:04}"
     return start_time
 
@@ -67,6 +69,8 @@ def obtain_tube_data(file_name):
             if site is None:
                 if "Site:" in line:
                     site = find_site(line)
+                    site = site.split('] ')[1].split(' btw ')[0]
+                    #print(site)
             elif date_strings is None:
                 if "Filter time:" in line:
                     date_strings = find_date_range(line)
@@ -80,7 +84,7 @@ def obtain_tube_data(file_name):
                 if 'Direction:' in line:
                     direction = find_direction(line)
             elif not headings_found:
-                if 'Time  Total   Cls   Cls   Cls   Cls   Cls   Cls   Cls   Cls   Cls   Cls   Cls   Cls' in line:
+                if 'Time  Total   Cls' in line:
                     headings_found = True
             else:
                 line_str = replace_multiple_spaces(line)
@@ -94,21 +98,85 @@ def obtain_tube_data(file_name):
     return df
 
 
-def find_all_files(folder, file_type=None):
+def find_suburb(address_split):
+    suburb = None
+    for i in address_split:
+        if i == i.upper() and not i.isnumeric():
+            if suburb is None:
+                suburb = i.strip()
+            else:
+                suburb += f' {i.strip()}'
+    return suburb
+
+
+def find_street_number(address_split):
+    street_number = None
+    if address_split[0].isnumeric():
+        street_number = address_split[0]
+    else:
+        numeric_strings = 0
+        for i in address_split[0:]:
+            if i.isnumeric():
+                street_number = i
+                numeric_strings += 1
+        if numeric_strings != 1:
+            street_number = 'not identified'
+    return street_number
+
+
+def find_street_name(address_split, street_number, suburb):
+    street_name = None
+    suburb_found = False
+    if suburb is not None:
+        for i in address_split:
+            if i == street_number:
+                continue
+            elif i == suburb:
+                suburb_found = True
+                break
+            else:
+                if street_name is None:
+                    street_name = i
+                else:
+                    street_name += f' {i}'
+    if not suburb_found:
+        street_name = None
+    return street_name
+
+
+def address_from_file(file_name):
+    address = file_name.replace("Outside no.", "")
+    address = address.replace("#", "")
+    address = address.split('bound ', 1)[1]
+    address = address.split(' Class Volume', 1)[0]
+    address_split = address.split(' ')
+    street_number = find_street_number(address_split)
+    suburb = find_suburb(address_split)
+    street_name = find_street_name(address_split, street_number, suburb)
+    street_address = f'{street_number} {street_name}, {suburb}, Queensland'
+    return street_address
+
+
+def analyse_files_in_folder(folder, file_type=None):
     main_df = pd.DataFrame()
     if file_type is None:
         file_type = '.txt'
-    #if folder
     all_files = os.listdir(folder)
     for file in tqdm(all_files, desc='analysing tube count files'):
         if file.endswith(file_type):
-            file_path = f"{folder}\{file}"
+            file_path = f"{folder}\\{file}"
             df_file = obtain_tube_data(file_path)
+            street_address = address_from_file(replace_multiple_spaces(file))
+            lat, lon, location = osm_tools.geocode_coordinates(street_address)
+            df_file.loc[:, 'lat'] = lat
+            df_file.loc[:, 'lon'] = lon
+            df_file.loc[:, 'street_address'] = street_address
             main_df = pd.concat([main_df, df_file])
     return main_df
 
 
 #df_site = obtain_tube_data(input_file)
 df_tubes = find_all_files(input_folder, file_type='.txt')
-df_tubes.to_csv(output_file, index=False)
-print(df_tubes)
+#print(df_tubes.head())
+#df_tubes.to_csv(output_file, index=False)
+
