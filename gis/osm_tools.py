@@ -1,6 +1,4 @@
-import os
 from geopy import geocoders
-#import Nominatim, Photon, GoogleV3
 
 
 def geocode_coordinates(address, user_agent='Engineering_Services_BCC'):
@@ -10,7 +8,7 @@ def geocode_coordinates(address, user_agent='Engineering_Services_BCC'):
         lat = location.latitude
         long = location.longitude
     else:
-        lat = none
+        lat = None
         long = None
     return lat, long, location
 
