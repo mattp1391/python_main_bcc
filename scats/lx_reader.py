@@ -2,6 +2,14 @@ import glob
 import pandas as pd
 from tqdm import tqdm
 import csv
+import os
+
+
+def find_lx_files(regions, parent_folder='Z:', sub_folder_file="Sys\Sys.lx"):
+    lx_files = []
+    for r in regions:
+        lx_files.append(os.path.join(parent_folder, r, sub_folder_file))
+    return lx_files
 
 
 def combine_lists2(list1, list2):
@@ -19,7 +27,8 @@ def combine_lists2(list1, list2):
 
 class LxAnalysis:
 
-    def __init__(self, input_folder, output_file=None, return_dataframe=True):
+    def __init__(self, lx_files, output_file=None, return_dataframe=True, input_folder=None):
+        self.lx_files = lx_files
         self.input_folder = input_folder
         self.output_file = output_file
         self.return_dataframe = return_dataframe
@@ -225,8 +234,9 @@ class LxAnalysis:
                     r.update({"updatedOffset" + str(plan_number) + str(plan_type): updated_offset})
 
     def analyse_lx_files_in_folder(self):
-        lx_files = glob.glob(f"{self.input_folder}/*.lx")
-        for f1 in tqdm(lx_files, desc='analysing_lx_files'):
+        if self.lx_files is None:
+            self.lx_files = glob.glob(f"{self.input_folder}/*.lx")
+        for f1 in tqdm(self.lx_files, desc='analysing_lx_files'):
             file1 = open(f1)
             self.Region = None
             self.intAllList = []
