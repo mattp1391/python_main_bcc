@@ -6,15 +6,6 @@ import os
 from gis import osm_tools
 
 
-input_file = r"C:\General\BCC_Software\Python\python_repository\development_files\analyse_tube_counts\inputs\13759 " \
-             r"Eastbound 23 Dobson Street ASCOT Between Racecourse Rd and Seymour Rd Class Volume 15 minute Report " \
-             r".txt "
-
-input_folder = r"C:\General\BCC_Software\Python\python_repository\development_files\analyse_tube_counts\inputs"
-output_file = r"C:\General\BCC_Software\Python\python_repository\development_files\analyse_tube_counts\outputs" \
-              r"\tubes_combined.csv "
-
-
 def replace_multiple_spaces(text_string):
     corrected_string = " ".join(text_string.split())
     return corrected_string
@@ -174,9 +165,4 @@ def analyse_files_in_folder(folder, file_type=None):
             main_df = pd.concat([main_df, df_file])
     return main_df
 
-
-#df_site = obtain_tube_data(input_file)
-df_tubes = find_all_files(input_folder, file_type='.txt')
-#print(df_tubes.head())
-#df_tubes.to_csv(output_file, index=False)
 
