@@ -53,8 +53,8 @@ class LxAnalysis:
                        "LP1Intersection": None, "LP2Intersection": None, "LP3Intersection": None,
                        "LP4Intersection": None, "SSInts": None}
 
-    def reset_dictionaries(self):  # Dictionary to be added, type=
-        if self.analysisType == "phaseSequence":
+    def reset_dictionaries(self, plan_no='1'):  # Dictionary to be added, type=
+        if self.analysisType == "phaseSequence" and plan_no == '1':
             self.allPhaseSequenceList.append(self.phaseSequenceDict.copy())
             self.phaseSequenceDict = {"int": None, "Plan1": None, "Plan2": None, "Plan3": None, "Plan4": None,
                                       "Plan5": None, "Plan6": None, "Plan7": None, "Plan8": None}
@@ -248,7 +248,10 @@ class LxAnalysis:
                     if int_[:5] == 'NAME=':
                         self.Region = int_[5:]
                     if int_[:2] == "I=":
-                        self.reset_dictionaries()  # included if above is not required
+                        #if line[4:10] == 'Plan=1':
+
+                        #    self.reset_dictionaries()
+                        self.reset_dictionaries(plan_no=line[9:10])  # included if above is not required
                         sequence_plan = None
                         self.analysisType = 'phaseSequence'
                         phase_sequence = ""
@@ -301,6 +304,7 @@ class LxAnalysis:
             self.identify_ss_intersection()
             intersection_list = self.combine_lists(self.intAllList, self.allPhaseSequenceList)
             sub_system_list = combine_lists2(intersection_list, self.ssAllList)
+            print(sub_system_list, intersection_list, self.intAllList)
             for r in sub_system_list:
                 self.RegionList.append(r)
                 self.RegionDict[r.get("int")] = r
