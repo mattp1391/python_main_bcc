@@ -138,7 +138,7 @@ def find_street_name(address_split, street_number, suburb):
 def address_from_file(file_name):
     address = file_name.replace("Outside no.", "")
     address = address.replace("#", "")
-    address = address.split('bound ', 1)[1]
+    address = address.split('_', 1)[1]
     address = address.split(' Class Volume', 1)[0]
     address_split = address.split(' ')
     street_number = find_street_number(address_split)
@@ -147,6 +147,15 @@ def address_from_file(file_name):
     street_address = f'{street_number} {street_name}, {suburb}, Queensland'
     return street_address
 
+
+def address_from_file_v2(file_name):
+    address = file_name.replace("Outside no.", "")
+    address = address.replace("#", "")
+    address = address.split('_', 1)[1]
+    address = address.replace('_NB_', '____').replace('_EB_', '____').replace('_WB_', '____').replace('_SB_', '____')
+    address_split = address.split('____')[0]
+    street_address = address_split .replace('_', ' ')
+    return street_address
 
 def analyse_files_in_folder(folder, file_type=None):
     main_df = pd.DataFrame()
@@ -157,7 +166,8 @@ def analyse_files_in_folder(folder, file_type=None):
         if file.endswith(file_type):
             file_path = f"{folder}\\{file}"
             df_file = obtain_tube_data(file_path)
-            street_address = address_from_file(replace_multiple_spaces(file))
+            #street_address = address_from_file(replace_multiple_spaces(file))
+            street_address = address_from_file_v2(replace_multiple_spaces(file))
             lat, lon, location = osm_tools.geocode_coordinates(street_address)
             df_file.loc[:, 'lat'] = lat
             df_file.loc[:, 'lon'] = lon
