@@ -76,7 +76,8 @@ def filter_cols_in_dataframe(df, filter_cols):
 def clean_here_2001_link(df):
     filter_cols = ['LINK_ID', 'LEFT_POSTAL_CODE', 'RIGHT_POSTAL_CODE', 'FUNCTIONAL_CLASS', 'TRAVEL_DIRECTION',
                    'SPEED_CATEGORY', 'FROM_REF_SPEED_LIMIT', 'TO_REF_SPEED_LIMIT', 'LENGTH', 'Shape_Length', 'T_F_DIR',
-                   'JoinedVal', 'ROUTE_TYPE', 'ROAD_OWNER', 'Group Name', 'WARD', 'SUBURB_NAM', 'LINK_ID_TF']
+                   'JoinedVal', 'ROUTE_TYPE', 'ROAD_OWNER', 'Group Name', 'WARD', 'SUBURB_NAM', 'LINK_ID_TF',
+                   'geometry']
     df = filter_cols_in_dataframe(df, filter_cols)
     df = df.rename(columns={'JoinedVal': 'LINK_ID_TF'})
     df.loc[:, 'SPD_LIMIT_UPDT'] = np.where(df['T_F_DIR'] == "F", df['FROM_REF_SPEED_LIMIT'],
@@ -158,7 +159,7 @@ def find_tt_ratios(df):
     heading_filter = ['LINK_PVID', 'LINK_ID', 'TRAVEL_DIRECTION', 'LINK_ID_TF', 'H08_00', 'H17_00', 'LEFT_POSTAL_CODE',
                       'RIGHT_POSTAL_CODE', 'FUNCTIONAL_CLASS', 'TRAVEL_DIRECTION', 'SPEED_CATEGORY',
                       'FROM_REF_SPEED_LIMIT', 'TO_REF_SPEED_LIMIT', 'LENGTH', 'Shape_Length', 'T_F_DIR', 'ROUTE_TYPE',
-                      'ROAD_OWNER', 'Group Name', 'WARD', 'SUBURB_NAM', 'SPD_LIMIT_UPDT']
+                      'ROAD_OWNER', 'Group Name', 'WARD', 'SUBURB_NAM', 'SPD_LIMIT_UPDT', 'geometry']
     df = filter_cols_in_dataframe(df, heading_filter)
     df = df.astype({'SPD_LIMIT_UPDT': 'float64', 'H08_00': 'float', 'H17_00': 'float'})
     df.loc[:, 'tt_ratio_am'] = df['SPD_LIMIT_UPDT'].div(df['H08_00'].values)
