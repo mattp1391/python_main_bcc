@@ -4,7 +4,7 @@ import geopandas as gpd
 from tqdm import tqdm
 from datetime import date, datetime
 import sys
-from IPython import display
+from IPython.core.display import display
 
 '''
 Notes: 
@@ -22,7 +22,7 @@ def date_as_string(date_=None, date_format='%Y_%m_%d'):
     return date_str
 
 
-def create_dataframe_from_geodataframe_if_geometry_empty(gdf, geometry_col='geometry'):
+def create_dataframe_from_geo_dataframe_if_geometry_empty(gdf, geometry_col='geometry'):
     if geometry_col in gdf.columns:
         geometry_values = gdf[geometry_col].values.tolist()
         if geometry_values.count(None) == len(geometry_values):
@@ -48,7 +48,7 @@ def import_gpkg_layers(file_name, layer_list):
     output_dict = {}
     for layer in tqdm(layer_list, desc=' loading layers from .gpkg file'):
         gdf = gpd.read_file(file_name, driver="GPKG", layer=layer)
-        gdf = create_dataframe_from_geodataframe_if_geometry_empty(gdf)
+        gdf = create_dataframe_from_geo_dataframe_if_geometry_empty(gdf)
         output_dict[layer] = gdf
     if output_dict == {}:
         output_dict = None
@@ -93,7 +93,7 @@ def filter_road_types(df, road_type_col=None, road_types=None):
     if road_type_col is None:
         road_type_col = 'ROUTE_TYPE'
     if road_types is not None:
-        df = [df[road_type_col].isin(road_types)]
+        df = df[df[road_type_col].isin(road_types)]
     return df
 
 
@@ -103,7 +103,7 @@ def join_speed_data(df_dict, road_types=None, road_type_col=None):
 
     Parameters
     ----------
-    df_dict(dictionary of dataframes): dictionary containing all dataframes required for assessment)
+    df_dict (dictionary of dataframes): dictionary containing all dataframes required for assessment)
     road_type_col (str, optional): name of dataframe column with road types.  if None, 'ROUTE_TYPE' is used
     road_types (list, optional): list of road types to be assessed.  Default value will include all.
 
@@ -113,7 +113,7 @@ def join_speed_data(df_dict, road_types=None, road_type_col=None):
 
     """
     df_here_link = clean_here_2001_link(df_dict['Here_2001_Link'], )
-    filter_road_types(df_here_link, road_type_col=road_type_col, road_types=road_types)
+    df_here_link = filter_road_types(df_here_link, road_type_col=road_type_col, road_types=road_types)
     df_ntp_ref_join = join_ntp_ref_oce_link(df_dict, df_here_link)
     df_here_speed = df_here_link.merge(df_ntp_ref_join, how='inner', on='LINK_ID_TF')
     df_joined = df_here_speed.merge(df_dict['NTP_SPD_OCE_60MIN_KPH_191H0'][['PATTERN_ID', 'H08_00', 'H17_00']],
@@ -140,13 +140,26 @@ def calc_mps(df, col_list):#  Don't think this is required.  Simpler way to calc
 
 
 def find_tt_ratios(df):
+    # Todo: make functionality dynamic for different time periods.  Probably with dictionary.
+    # ToDo: add parameters for column names
+    """
+    Find the travel time ratios for all here link data.  Ratio is calculated as speed limit divided by actual speed.
+    At present functionality is hard coded to 8am for am and 5pm for PM.
+
+    Parameters
+    ----------
+    df (pandas.DataFrame): dataframe consisting of link free flow speeds and actual speeds.
+
+    Returns
+    -------
+    dataframe for export to csv
+    """
+
     heading_filter = ['LINK_PVID', 'LINK_ID', 'TRAVEL_DIRECTION', 'LINK_ID_TF', 'H08_00', 'H17_00', 'LEFT_POSTAL_CODE',
                       'RIGHT_POSTAL_CODE', 'FUNCTIONAL_CLASS', 'TRAVEL_DIRECTION', 'SPEED_CATEGORY',
                       'FROM_REF_SPEED_LIMIT', 'TO_REF_SPEED_LIMIT', 'LENGTH', 'Shape_Length', 'T_F_DIR', 'ROUTE_TYPE',
                       'ROAD_OWNER', 'Group Name', 'WARD', 'SUBURB_NAM', 'SPD_LIMIT_UPDT']
     df = filter_cols_in_dataframe(df, heading_filter)
-    #mps_col_list = ['SPD_LIMIT_UPDT', 'H08_00', 'H17_00']
-    #tt_ratio_list = ['H08_00', 'H17_00']
     df = df.astype({'SPD_LIMIT_UPDT': 'float64', 'H08_00': 'float', 'H17_00': 'float'})
     df.loc[:, 'tt_ratio_am'] = df['SPD_LIMIT_UPDT'].div(df['H08_00'].values)
     df.loc[:, 'tt_ratio_pm'] = df['SPD_LIMIT_UPDT'].div(df['H17_00'].values)
