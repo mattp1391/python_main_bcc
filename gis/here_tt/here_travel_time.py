@@ -76,8 +76,31 @@ def join_pattern(df1, df2):
     return df
 
 
-def join_speed_data(df_dict):
+def filter_road_types(df, road_type_col=None, road_types=None):
+    if road_type_col is None:
+        road_type_col = 'ROUTE_TYPE'
+    if road_types is not None:
+        df = [df[road_type_col].isin(road_types)]
+    return df
+
+
+def join_speed_data(df_dict, road_types=None, road_type_col=None):
+    """
+    This function finds the travel time ratio for all here links
+
+    Parameters
+    ----------
+    df_dict(dictionary of dataframes): dictionary containing all dataframes required for assessment)
+    road_type_col (str, optional): name of dataframe column with road types.  if None, 'ROUTE_TYPE' is used
+    road_types (list, optional): list of road types to be assessed.  Default value will include all.
+
+    Returns
+    -------
+    pd.DataFrame: Dataframe with speed data assessed.
+
+    """
     df_here_link = clean_here_2001_link(df_dict['Here_2001_Link'], )
+    filter_road_types(df_here_link, road_type_col=road_type_col, road_types=road_types)
     df_ntp_ref_join = join_ntp_ref_oce_link(df_dict, df_here_link)
     df_here_speed = df_here_link.merge(df_ntp_ref_join, how='inner', on='LINK_ID_TF')
     df_joined = df_here_speed.merge(df_dict['NTP_SPD_OCE_60MIN_KPH_191H0'][['PATTERN_ID', 'H08_00', 'H17_00']],
