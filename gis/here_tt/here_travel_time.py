@@ -32,6 +32,19 @@ def create_dataframe_from_geodataframe_if_geometry_empty(gdf, geometry_col='geom
 
 
 def import_gpkg_layers(file_name, layer_list):
+    """
+    creates a dictionary of dataframes from a geopeackage (".gpkg") file
+
+    Parameters
+    ----------
+    file_name (string): location and name of .gpkg file package (eg. r"folder/filename.gpkg")
+    layer_list (list): list of layers to be included in the dataframe dictionary
+
+    Returns
+    -------
+    dictionary of geo-dataframes or dataframes consisting of the layer name and the relevant geo dataframe (if spatial) or pandas
+    dataframe.
+    """
     output_dict = {}
     for layer in tqdm(layer_list, desc=' loading layers from .gpkg file'):
         gdf = gpd.read_file(file_name, driver="GPKG", layer=layer)
@@ -109,6 +122,17 @@ def join_speed_data(df_dict, road_types=None, road_type_col=None):
 
 
 def calc_mps(df, col_list):#  Don't think this is required.  Simpler way to calc ratio used.
+    """
+
+    Parameters
+    ----------
+    df
+    col_list
+
+    Returns
+    -------
+
+    """
     for col in col_list:
         new_col_name = f"{col}_MpS"
         df.loc[:, new_col_name] = df[col] * 1000 / 3600
