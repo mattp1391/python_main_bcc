@@ -13,3 +13,11 @@ def create_folder(path):
         path = os.path.dirname(path)
     if not os.path.isdir(path):
         os.makedirs(path)
+    return
+
+
+def replace_root(path, root, new_root):
+    # type: (str, str, str) -> str
+
+    rel = os.path.relpath(path, root)
+    return os.path.join(new_root, rel)
