@@ -5,6 +5,63 @@ from datetime import datetime, timedelta
 import os
 from gis import osm_tools
 
+# https://docs.microsoft.com/en-us/office/vba/api/office.msoshapetype
+shape_type_dict = {30: 'mso3DModel',
+                   1: 'msoAutoShape',
+                   2: 'msoCallout',
+                   20: 'msoCanvas',
+                   3: 'msoChart',
+                   4: 'msoComment',
+                   27: 'msoContentApp',
+                   21: 'msoDiagram',
+                   7: 'msoEmbeddedOLEObject',
+                   8: 'msoFormControl',
+                   5: 'msoFreeform',
+                   28: 'msoGraphic',
+                   6: 'msoGroup',
+                   24: 'msoIgxGraphic',
+                   22: 'msoInk',
+                   23: 'msoInkComment',
+                   9: 'msoLine',
+                   31: 'msoLinked3DModel',
+                   29: 'msoLinkedGraphic',
+                   10: 'msoLinkedOLEObject',
+                   11: 'msoLinkedPicture',
+                   16: 'msoMedia',
+                   12: 'msoOLEControlObject',
+                   13: 'msoPicture',
+                   14: 'msoPlaceholder',
+                   18: 'msoScriptAnchor',
+                   2: 'msoShapeTypeMixed',
+                   25: 'msoSlicer',
+                   19: 'msoTable',
+                   17: 'msoTextBox',
+                   15: 'msoTextEffect',
+                   26: 'msoWebVideo'}
+
+arrow_head_style = {1: 'msoArrowheadNone',
+                    2: 'msoArrowheadTriangle',
+                    3: 'msoArrowheadOpen',
+                    4: 'msoArrowheadStealth',
+                    5: 'msoArrowheadDiamond',
+                    6: 'msoArrowheadOval',
+                    -2: 'msoArrowheadStyleMixed'}
+
+direction_dict = {0: 'N',
+                  45: 'NE',
+                  90: 'E',
+                  135: 'SE',
+                  180: 'S',
+                  225: 'SW',
+                  270: 'W',
+                  315: 'NW',
+                  360: 'N',
+                  -45: 'NW',
+                  -90: 'W',
+                  -135: 'SW',
+                  -180: 'S'
+                  }
+
 
 def replace_multiple_spaces(text_string):
     corrected_string = " ".join(text_string.split())
@@ -61,7 +118,6 @@ def obtain_tube_data(file_name):
                 if "Site:" in line:
                     site = find_site(line)
                     site = site.split('] ')[1].split(' btw ')[0]
-                    #print(site)
             elif date_strings is None:
                 if "Filter time:" in line:
                     date_strings = find_date_range(line)
@@ -154,8 +210,9 @@ def address_from_file_v2(file_name):
     address = address.split('_', 1)[1]
     address = address.replace('_NB_', '____').replace('_EB_', '____').replace('_WB_', '____').replace('_SB_', '____')
     address_split = address.split('____')[0]
-    street_address = address_split .replace('_', ' ')
+    street_address = address_split.replace('_', ' ')
     return street_address
+
 
 def analyse_files_in_folder(folder, file_type=None):
     main_df = pd.DataFrame()
@@ -166,7 +223,6 @@ def analyse_files_in_folder(folder, file_type=None):
         if file.endswith(file_type):
             file_path = f"{folder}\\{file}"
             df_file = obtain_tube_data(file_path)
-            #street_address = address_from_file(replace_multiple_spaces(file))
             street_address = address_from_file_v2(replace_multiple_spaces(file))
             lat, lon, location = osm_tools.geocode_coordinates(street_address)
             df_file.loc[:, 'lat'] = lat
@@ -174,5 +230,3 @@ def analyse_files_in_folder(folder, file_type=None):
             df_file.loc[:, 'street_address'] = street_address
             main_df = pd.concat([main_df, df_file])
     return main_df
-
-
