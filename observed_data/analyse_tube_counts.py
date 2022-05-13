@@ -5,63 +5,6 @@ from datetime import datetime, timedelta
 import os
 from gis import osm_tools
 
-# https://docs.microsoft.com/en-us/office/vba/api/office.msoshapetype
-shape_type_dict = {30: 'mso3DModel',
-                   1: 'msoAutoShape',
-                   2: 'msoCallout',
-                   20: 'msoCanvas',
-                   3: 'msoChart',
-                   4: 'msoComment',
-                   27: 'msoContentApp',
-                   21: 'msoDiagram',
-                   7: 'msoEmbeddedOLEObject',
-                   8: 'msoFormControl',
-                   5: 'msoFreeform',
-                   28: 'msoGraphic',
-                   6: 'msoGroup',
-                   24: 'msoIgxGraphic',
-                   22: 'msoInk',
-                   23: 'msoInkComment',
-                   9: 'msoLine',
-                   31: 'msoLinked3DModel',
-                   29: 'msoLinkedGraphic',
-                   10: 'msoLinkedOLEObject',
-                   11: 'msoLinkedPicture',
-                   16: 'msoMedia',
-                   12: 'msoOLEControlObject',
-                   13: 'msoPicture',
-                   14: 'msoPlaceholder',
-                   18: 'msoScriptAnchor',
-                   2: 'msoShapeTypeMixed',
-                   25: 'msoSlicer',
-                   19: 'msoTable',
-                   17: 'msoTextBox',
-                   15: 'msoTextEffect',
-                   26: 'msoWebVideo'}
-
-arrow_head_style = {1: 'msoArrowheadNone',
-                    2: 'msoArrowheadTriangle',
-                    3: 'msoArrowheadOpen',
-                    4: 'msoArrowheadStealth',
-                    5: 'msoArrowheadDiamond',
-                    6: 'msoArrowheadOval',
-                    -2: 'msoArrowheadStyleMixed'}
-
-direction_dict = {0: 'N',
-                  45: 'NE',
-                  90: 'E',
-                  135: 'SE',
-                  180: 'S',
-                  225: 'SW',
-                  270: 'W',
-                  315: 'NW',
-                  360: 'N',
-                  -45: 'NW',
-                  -90: 'W',
-                  -135: 'SW',
-                  -180: 'S'
-                  }
-
 
 def replace_multiple_spaces(text_string):
     corrected_string = " ".join(text_string.split())

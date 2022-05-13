@@ -7,6 +7,65 @@ import pandas as pd
 import numbers
 
 
+# https://docs.microsoft.com/en-us/office/vba/api/office.msoshapetype
+shape_type_dict = {30: 'mso3DModel',
+                   1: 'msoAutoShape',
+                   2: 'msoCallout',
+                   20: 'msoCanvas',
+                   3: 'msoChart',
+                   4: 'msoComment',
+                   27: 'msoContentApp',
+                   21: 'msoDiagram',
+                   7: 'msoEmbeddedOLEObject',
+                   8: 'msoFormControl',
+                   5: 'msoFreeform',
+                   28: 'msoGraphic',
+                   6: 'msoGroup',
+                   24: 'msoIgxGraphic',
+                   22: 'msoInk',
+                   23: 'msoInkComment',
+                   9: 'msoLine',
+                   31: 'msoLinked3DModel',
+                   29: 'msoLinkedGraphic',
+                   10: 'msoLinkedOLEObject',
+                   11: 'msoLinkedPicture',
+                   16: 'msoMedia',
+                   12: 'msoOLEControlObject',
+                   13: 'msoPicture',
+                   14: 'msoPlaceholder',
+                   18: 'msoScriptAnchor',
+                   2: 'msoShapeTypeMixed',
+                   25: 'msoSlicer',
+                   19: 'msoTable',
+                   17: 'msoTextBox',
+                   15: 'msoTextEffect',
+                   26: 'msoWebVideo'}
+
+arrow_head_style = {1: 'msoArrowheadNone',
+                    2: 'msoArrowheadTriangle',
+                    3: 'msoArrowheadOpen',
+                    4: 'msoArrowheadStealth',
+                    5: 'msoArrowheadDiamond',
+                    6: 'msoArrowheadOval',
+                    -2: 'msoArrowheadStyleMixed'}
+
+direction_dict = {0: 'N',
+                  45: 'NE',
+                  90: 'E',
+                  135: 'SE',
+                  180: 'S',
+                  225: 'SW',
+                  270: 'W',
+                  315: 'NW',
+                  360: 'N',
+                  -45: 'NW',
+                  -90: 'W',
+                  -135: 'SW',
+                  -180: 'S'
+                  }
+
+
+
 def variable_is_number(no):
     """
     Determines if a string is a number
@@ -187,4 +246,36 @@ def closest_node(node, nodes):
     return np.argmin(dist_2)
 
 
-
+def find_movement_dict_from_intersection_count(excel_file):
+    xl = Dispatch('Excel.Application')
+    wb = xl.Workbooks.Open(Filename = excel_file)
+    ws = wb.Worksheets(1)
+    intersection = ws.cells(4,2).value
+    turns_dict = {}
+    peds_dict = {}
+    text_dict = {}
+    movement_dict = {}
+    shapes = ws.shapes
+    for sh in shapes:
+        if shape_type_dict[sh.Type] == 'msoLine':
+            line_name = sh.Name
+            start_style = sh.Line.BeginArrowheadStyle
+            end_style = sh.Line.EndArrowheadStyle
+            cell_col = sh.TopLeftCell.Address.split("$")[1]
+            cell_row = sh.TopLeftCell.Address.split("$")[2]
+            cell = (int(cell_row), int(column_index_from_string(cell_col)))
+            shape_top = sh.top
+            shape_height = sh.height
+            shape_left = sh.left
+            shape_width = sh.width
+            hor_flip = sh.HorizontalFlip
+            ver_flip = sh.VerticalFlip
+            line_pos = find_point_positions(hor_flip, ver_flip, shape_top, shape_top - shape_height, shape_left, shape_left + shape_width)
+            angle = compass_angle(line_pos[0][1], line_pos[0][0], line_pos[1][1], line_pos[1][0])
+            angle_round = int(custom_round(angle, base=45))
+            if arrow_head_style[end_style] == 'msoArrowheadTriangle':
+                movement, approach = find_turn_movement(ws, cell)
+                direction = direction_dict[angle_round]
+                movement_dict[movement] = f"{approach}_{direction}"
+    wb.Close(True)
+    return movement_dict
