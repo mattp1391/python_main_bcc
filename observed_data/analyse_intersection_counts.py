@@ -134,7 +134,7 @@ def angle_between(p1, p2):
     return degrees
 
 
-def compass_angle_ss(p1, p2):  # updated to iinclude as x and y for points individually
+def compass_angle(p1, p2, excel_cell_format=False):  # updated to iinclude as x and y for points individually
     """
     find angle of a point.  NOTE THIS HAS BEEN DEPRECATED!
     Parameters
@@ -146,10 +146,18 @@ def compass_angle_ss(p1, p2):  # updated to iinclude as x and y for points indiv
     -------
 
     """
-    origin_x = p1[1]
-    destination_x = p2[1]
-    origin_y = p1[0]
-    destination_y = p2[0]
+    # ToDo: update docstring
+
+    if excel_cell_format:
+        origin_x = p1[1]
+        destination_x = p2[1]
+        origin_y = p1[0]
+        destination_y = p2[0]
+    else:
+        origin_x = p1[0]
+        destination_x = p2[0]
+        origin_y = p1[1]
+        destination_y = p2[1]
     delta_x = destination_x - origin_x
     delta_y = destination_y - origin_y
     degrees_temp = math.atan2(delta_x, delta_y) / math.pi * 180
@@ -160,7 +168,7 @@ def compass_angle_ss(p1, p2):  # updated to iinclude as x and y for points indiv
     return degrees_final
 
 
-def compass_angle(origin_x, origin_y, destination_x, destination_y):
+def compass_angle_ss(origin_x, origin_y, destination_x, destination_y):
     """
     find the angle of two points relative to north.
     Parameters
@@ -246,11 +254,22 @@ def closest_node(node, nodes):
     return np.argmin(dist_2)
 
 
-def find_movement_dict_from_intersection_count(excel_file):
+def find_movement_dict_from_intersection_count(excel_file_path):
+    """
+    find relationship between turn movement numbers and origin to destination approach.  Approach is designated by North
+    (N), East (E), South (S) or West (W).
+    Parameters
+    ----------
+    excel_file_path (string): string of path to excel file
+
+    Returns
+    -------
+    Dict: {movement_1: Origin_Destination, movement_2, origin_destination}
+    """
     xl = Dispatch('Excel.Application')
-    wb = xl.Workbooks.Open(Filename = excel_file)
+    wb = xl.Workbooks.Open(Filename=excel_file_path)
     ws = wb.Worksheets(1)
-    intersection = ws.cells(4,2).value
+    intersection = ws.cells(4, 2).value
     turns_dict = {}
     peds_dict = {}
     text_dict = {}
@@ -271,7 +290,7 @@ def find_movement_dict_from_intersection_count(excel_file):
             hor_flip = sh.HorizontalFlip
             ver_flip = sh.VerticalFlip
             line_pos = find_point_positions(hor_flip, ver_flip, shape_top, shape_top - shape_height, shape_left, shape_left + shape_width)
-            angle = compass_angle(line_pos[0][1], line_pos[0][0], line_pos[1][1], line_pos[1][0])
+            angle = compass_angle(line_pos[0], line_pos[1], excel_cell_format=True)
             angle_round = int(custom_round(angle, base=45))
             if arrow_head_style[end_style] == 'msoArrowheadTriangle':
                 movement, approach = find_turn_movement(ws, cell)
