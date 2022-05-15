@@ -297,4 +297,26 @@ def find_movement_dict_from_intersection_count(excel_file_path):
                 direction = direction_dict[angle_round]
                 movement_dict[movement] = f"{approach}_{direction}"
     wb.Close(True)
-    return movement_dict
+    return intersection, movement_dict
+
+
+def find_point_in_linestring(line_str, point_index=0):
+    coordinates = line_str.coords
+    point = coordinates[point_index]
+    return point
+
+
+def find_angle_of_linestring(linestring, point_1_index=-1, point_2_index=0):
+    line_str_coordinates = linestring.coords
+    point_1 = line_str_coordinates[point_1_index]
+    point_2 = line_str_coordinates[point_2_index]
+    angle = compass_angle(point_1, point_2)
+    return angle
+
+
+def add_angle_and_direction_columns(gdf, geometry_col='geometry', round_angle=45, angle_col='angle',
+                                    angle_round_col='angle_round', direction_col='direction'):
+    gdf
+    links_to_count_gdf.loc[:, 'angle'] = links_to_count_gdf.apply(
+        lambda row: compass_angle(row['AXco'], row['AYco'], row['BXco'], row['BYco']), axis=1)
+
