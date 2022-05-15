@@ -6,7 +6,6 @@ import geopandas as gpd
 import pandas as pd
 import numbers
 
-
 # https://docs.microsoft.com/en-us/office/vba/api/office.msoshapetype
 shape_type_dict = {30: 'mso3DModel',
                    1: 'msoAutoShape',
@@ -34,7 +33,7 @@ shape_type_dict = {30: 'mso3DModel',
                    13: 'msoPicture',
                    14: 'msoPlaceholder',
                    18: 'msoScriptAnchor',
-                   2: 'msoShapeTypeMixed',
+                   -2: 'msoShapeTypeMixed',
                    25: 'msoSlicer',
                    19: 'msoTable',
                    17: 'msoTextBox',
@@ -63,7 +62,6 @@ direction_dict = {0: 'N',
                   -135: 'SW',
                   -180: 'S'
                   }
-
 
 
 def variable_is_number(no):
@@ -130,7 +128,7 @@ def angle_between(p1, p2):
     ang1 = np.arctan2(*p1[::-1])
     ang2 = np.arctan2(*p2[::-1])
     radians = (ang2 - ang1) % (2 * np.pi)
-    degrees = np.rad2deg((ang1 - ang2) % (2 * np.pi))
+    degrees = np.rad2deg(radians)
     return degrees
 
 
@@ -269,11 +267,12 @@ def find_movement_dict_from_intersection_count(excel_file_path):
     xl = Dispatch('Excel.Application')
     wb = xl.Workbooks.Open(Filename=excel_file_path)
     ws = wb.Worksheets(1)
+    movement_dict = {}
     intersection = ws.cells(4, 2).value
+    movement_dict['intersection'] = intersection
     turns_dict = {}
     peds_dict = {}
     text_dict = {}
-    movement_dict = {}
     shapes = ws.shapes
     for sh in shapes:
         if shape_type_dict[sh.Type] == 'msoLine':
@@ -289,15 +288,18 @@ def find_movement_dict_from_intersection_count(excel_file_path):
             shape_width = sh.width
             hor_flip = sh.HorizontalFlip
             ver_flip = sh.VerticalFlip
-            line_pos = find_point_positions(hor_flip, ver_flip, shape_top, shape_top - shape_height, shape_left, shape_left + shape_width)
+            line_pos = find_point_positions(hor_flip, ver_flip, shape_top, shape_top - shape_height, shape_left,
+                                            shape_left + shape_width)
             angle = compass_angle(line_pos[0], line_pos[1], excel_cell_format=True)
             angle_round = int(custom_round(angle, base=45))
             if arrow_head_style[end_style] == 'msoArrowheadTriangle':
                 movement, approach = find_turn_movement(ws, cell)
                 direction = direction_dict[angle_round]
-                movement_dict[movement] = f"{approach}_{direction}"
+                movement_dict[str(movement)] = f"{approach}_{direction}"
     wb.Close(True)
-    return intersection, movement_dict
+    print(movement_dict)
+    df = pd.DataFrame.from_dict([movement_dict])
+    return df
 
 
 def find_point_in_linestring(line_str, point_index=0):
@@ -314,9 +316,11 @@ def find_angle_of_linestring(linestring, point_1_index=-1, point_2_index=0):
     return angle
 
 
-def add_angle_and_direction_columns(gdf, geometry_col='geometry', round_angle=45, angle_col='angle',
-                                    angle_round_col='angle_round', direction_col='direction'):
-    gdf
-    links_to_count_gdf.loc[:, 'angle'] = links_to_count_gdf.apply(
-        lambda row: compass_angle(row['AXco'], row['AYco'], row['BXco'], row['BYco']), axis=1)
-
+def add_direction_columns_to_gdf(gdf, geometry_col='geometry', angle_col='angle'):
+    # ToDo: check if new columns are in dataframe before adding them.
+    gdf.loc[:, angle_col] = gdf.apply(lambda row: find_angle_of_linestring(row[geometry_col]), axis=1)
+    gdf.loc[:, 'angle_round_90'] = gdf.apply(lambda row: custom_round(row[angle_col], 90), axis=1)
+    gdf.loc[:, 'angle_round_45'] = gdf.apply(lambda row: custom_round(row[angle_col], 45), axis=1)
+    gdf.loc[:, 'direction_4'] = gdf['angle_round_90'].map(direction_dict)
+    gdf.loc[:, 'direction_8'] = gdf['angle_round_45'].map(direction_dict)
+    return gdf
