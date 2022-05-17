@@ -102,7 +102,7 @@ def find_number_of_columns(ws, row_no, col_no):
 
 
 def check_cell_value_strings(ws, row_from, search_strings, loop_rows=None):
-    #search_strings = [str(x).lower() for x in search_strings]
+    search_strings_lower = [str(x).lower() for x in search_strings]
     row_no = row_from
     output_row = -1
     if loop_rows is None:
@@ -115,7 +115,7 @@ def check_cell_value_strings(ws, row_from, search_strings, loop_rows=None):
                     output_row = row_no
         elif isinstance(search_strings, list):
             #any(ext in url_string for ext in extensionsToCheck)
-            if any(str(string_item).lower() in str(cell_value).lower() for string_item in search_strings):
+            if any(str(string_item).lower() in str(cell_value).lower() for string_item in search_strings_lower):
                 output_row = row_no
         else:
             if search_strings.lower() in str(cell_value).lower():
@@ -135,20 +135,19 @@ def find_count_data_rows(excel_file_path, sheet_name, ws, row_from, header_strin
             search_for_additional_data = False
         else:
             row_no = header_row
-            print(header_row, 'header_row')
             use_columns = find_columns_used(ws, header_row + 1)
-            end_df_row = check_cell_value_strings(ws, row_no, search_strings=df_end_strings, loop_rows=None)
+            end_df_row = check_cell_value_strings(ws, row_no, search_strings=df_end_strings, loop_rows=None) - 1
             if end_df_row == -1:
                 search_for_additional_data = False
             row_no = end_df_row
             if search_for_additional_data:
                 data_df = pandas_read_excel_multi_index_with_use_cols(excel_file_path, sheet_name=sheet_name,
                                                                       header_from=header_row-1, header_to=header_row,
-                                                                      n_rows=end_df_row - header_row+1,
+                                                                      n_rows=end_df_row - (header_row+1),
                                                                       use_cols=use_columns)
                 dataframes.append(data_df)
     if dataframes:
-        spreadsheet_df = pd.concat(dataframes, ignore_index=True, axis=0)
+        spreadsheet_df = pd.concat(dataframes)
     return spreadsheet_df
 
 
@@ -167,7 +166,6 @@ def get_data(ws):
                 survey_info_dict['survey_site'] = ws.cells(row, col + 1).value
             elif 'date' in str(cell_value).lower():
                 pywin_datetime = ws.cells(row, col + 1).value
-                #print(type(ole_date))
                 py_date = ole_to_date_str(pywin_datetime)
                 survey_info_dict['survey_date'] = py_date
             elif 'weather' in str(cell_value).lower():
@@ -196,11 +194,10 @@ def pandas_read_excel_multi_index_with_use_cols(excel_file, sheet_name=0, header
     -------
     object (dataframe)
     """
-    #df = pd.read_excel(excel_file, sheet_name=sheet_name, header=[header_from, header_to], nrows=n_rows, usecols=use_cols)
-
+    #df = pd.read_excel(excel_file, sheet_name=sheet_name, header=[header_from, header_to], nrows=n_rows, usecols=use_cols
     df = pd.read_excel(excel_file,
                        sheet_name=sheet_name,
-                       header=header_to+1,
+                       header=header_to,
                        index_col=[header_from, header_to],
                        nrows=n_rows,
                        usecols=use_cols,
@@ -215,11 +212,10 @@ def pandas_read_excel_multi_index_with_use_cols(excel_file, sheet_name=0, header
                           parse_dates=False)
 
     index = index.fillna(method='ffill', axis=1)
-    display(index)
-    display(df.head())
     df.columns = pd.MultiIndex.from_arrays(index.values)
     df.columns = df.columns.map(lambda x: '|'.join([str(i) for i in x]))
     df = df.reset_index(drop=True)
+
     return df
 
 
@@ -227,9 +223,8 @@ def find_columns_used(ws, row_no, col_from=1):
     col_no = col_from
     while ws.cells(row_no, col_no).value is not None:
         col_no += 1
-    print(col_from, col_no)
     start_col = get_column_letter(col_from)
-    end_col = get_column_letter(col_no)
+    end_col = get_column_letter(col_no-1)
 
     use_columns = f'{start_col}:{end_col}'
     return use_columns
