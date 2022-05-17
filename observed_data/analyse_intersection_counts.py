@@ -1,10 +1,16 @@
 from win32com.client import Dispatch
+from openpyxl import load_workbook, Workbook
 from openpyxl.utils import get_column_letter, column_index_from_string
 import numpy as np
 import math
 import geopandas as gpd
 import pandas as pd
 import numbers
+from datetime import datetime, timedelta
+import time
+import pywintypes
+
+
 
 # https://docs.microsoft.com/en-us/office/vba/api/office.msoshapetype
 shape_type_dict = {30: 'mso3DModel',
@@ -62,6 +68,231 @@ direction_dict = {0: 'N',
                   -135: 'SW',
                   -180: 'S'
                   }
+
+# https://docs.microsoft.com/en-us/office/vba/api/excel.xlhalign
+excel_horizontal_alignment_dict = {-4108: 'Center',
+                                   7: 'Center across selection',
+                                   -4117: 'Distribute',
+                                   5: 'Fill',
+                                   1: 'Align according to data type',
+                                   -4130: 'Justify',
+                                   -4131: 'Left',
+                                   -4152: 'Right'}
+
+
+
+
+def ole_to_date_str(pywin_datetime):
+    py_datetime = datetime(
+                    year=pywin_datetime.year,
+                    month=pywin_datetime.month,
+                    day=pywin_datetime.day,
+                    hour=pywin_datetime.hour,
+                    minute=pywin_datetime.minute,
+                    second=pywin_datetime.second)
+    date_str = py_datetime.strftime("%d/%m/%Y")
+    return date_str
+
+
+def find_number_of_columns(ws, row_no, col_no):
+    while ws.cells(row_no, col_no).value is None:
+        col_no += 1
+    return col_no
+
+
+def find_count_data_rows(ws, row_from, loop_rows, search_strings):
+    row_no = row_from
+    row_no_output = -1
+    while row_no <= row_from + loop_rows and row_no_output < 0:
+        cell_value = ws.cells(row_no, 1).value
+        if isinstance(search_strings, list):
+            if any(string_item.lower() in str(cell_value).lower(0) for string_item in search_strings):
+                row_no_output = row_no
+        else:
+            if search_strings.lower() in str(cell_value).lower():
+                row_no_output = row_no
+        row_no += 1
+    return row_no_output
+
+
+def get_data(ws):
+    row_loop = range(1, 11)
+    col_loop = range(1, 11)
+    survey_info_dict = {'survey_site': None, 'survey_date': None, 'survey_weather': None}
+    survey_date = None
+    survey_site = None
+    survey_weather = None
+    for col in col_loop:
+        for row in row_loop:
+            cell_value = ws.cells(row, col).value
+            if 'location' in str(cell_value).lower():
+                survey_info_dict['survey_site'] = ws.cells(row, col + 1).value
+            elif 'date' in str(cell_value).lower():
+                pywin_datetime = ws.cells(row, col + 1).value
+                #print(type(ole_date))
+                py_date = ole_to_date_str(pywin_datetime)
+                survey_info_dict['survey_date'] = py_date
+            elif 'weather' in str(cell_value).lower():
+                survey_info_dict['survey_weather'] = ws.cells(row, col + 1).value
+
+    row_start = 1
+
+    return survey_info_dict
+
+
+def pandas_read_excel_multi_index_with_use_cols(excel_file, sheet_name=0, header_from=0, header_to=0, n_rows=None,
+                                                use_cols=None):
+    """
+    Pandas is unable to specify usecols when extracting multi-index dataframe from excel.  This function
+    provides a workaround for this feature.
+    Parameters
+    ----------
+    excel_file (string): Path to excel file to be read
+    sheet_name (string or int): name (string) or index (int) of excel sheet to be read
+    header_from (int): first line of haeder.
+    header_to (int): last line of header
+    n_rows (int): number of rows to be included in dataframe
+    use_cols (string or int): rows to be used in dataframe
+
+    Returns
+    -------
+    object (dataframe)
+    """
+    #df = pd.read_excel(excel_file, sheet_name=sheet_name, header=[header_from, header_to], nrows=n_rows, usecols=use_cols)
+
+    df = pd.read_excel(excel_file,
+                       sheet_name=sheet_name,
+                       header=header_to+1,
+                       index_col=[header_from, header_to],
+                       nrows=10,
+                       usecols=use_cols,
+                       parse_dates=False)
+    index = pd.read_excel(excel_file,
+                          sheet_name=sheet_name,
+                          header=None,
+                          skiprows=header_from,
+                          index_col=[header_from, header_to],
+                          nrows=2,
+                          usecols=use_cols,
+                          parse_dates=False)
+    index = index.fillna(method='ffill', axis=1)
+    df.columns = pd.MultiIndex.from_arrays(index.values)
+    df.columns = df.columns.map(lambda x: '|'.join([str(i) for i in x]))
+    df = df.reset_index(drop=True)
+    return df
+
+
+def find_column_count(ws, row_no, col_from=1):
+    col_no = col_from
+    while ws.cells(row_no, col_no).value is not None:
+        col_no += 1
+    use_columns = list(range(col_from-1, col_no))
+    return use_columns
+
+
+def convert_spreadsheet_to_dataframe(ws, search_strings_headings, search_strings_end):
+    print('test')
+
+
+def get_austraffic_1_survey_data(excel_file_path, sheet_name):
+    # ToDo: updated doc string
+    """
+    find relationship between turn movement numbers and origin to destination approach.  Approach is designated by North
+    (N), East (E), South (S) or West (W).
+    Parameters
+    ----------
+    excel_file_path (string): string of path to excel file
+
+    Returns
+    -------
+    DataFrame: {movement_1: Origin_Destination, movement_2, origin_destination}
+    """
+    xl = Dispatch('Excel.Application')
+    wb = xl.Workbooks.Open(Filename=excel_file_path)
+    ws = wb.Worksheets(1)
+    get_data(ws)
+    movement_dict = {}
+    intersection = ws.cells(4, 2).value
+    #movement_dict['intersection'] = intersection
+    turns_dict = {}
+    peds_dict = {}
+    text_dict = {}
+    shapes = ws.shapes
+    for sh in shapes:
+        if shape_type_dict[sh.Type] == 'msoLine':
+            line_name = sh.Name
+            start_style = sh.Line.BeginArrowheadStyle
+            end_style = sh.Line.EndArrowheadStyle
+            cell_col = sh.TopLeftCell.Address.split("$")[1]
+            cell_row = sh.TopLeftCell.Address.split("$")[2]
+            cell = (int(cell_row), int(column_index_from_string(cell_col)))
+            shape_top = sh.top
+            shape_height = sh.height
+            shape_left = sh.left
+            shape_width = sh.width
+            hor_flip = sh.HorizontalFlip
+            ver_flip = sh.VerticalFlip
+            line_pos = find_point_positions(hor_flip, ver_flip, shape_top, shape_top - shape_height, shape_left,
+                                            shape_left + shape_width)
+            angle = compass_angle(line_pos[0], line_pos[1], excel_cell_format=True)
+            angle_round = int(custom_round(angle, base=45))
+            if arrow_head_style[end_style] == 'msoArrowheadTriangle':
+                movement, approach = find_turn_movement(ws, cell)
+                direction = direction_dict[angle_round]
+                movement_dict[str(movement)] = f"{approach}_{direction}"
+
+    row_no = find_count_data_rows(ws, row_from=1, loop_rows=30, search_strings='Time')
+    use_columns = find_column_count(ws, row_no + 1)
+    data_df = pandas_read_excel_multi_index_with_use_cols(excel_file_path, sheet_name, header_from=row_no - 1,
+                                                         header_to=row_no, n_rows=5,
+                                                         use_cols=use_columns)
+    #data_df = add_survey_details_to_dataframe(data_df, )
+    wb.Close(True)
+    print(movement_dict)
+    df = pd.DataFrame.from_dict([movement_dict])
+    return data_df
+
+
+def get_ttm_1_survey_data(ws):
+    df = pd.DataFrame
+    return df
+
+
+def get_matrix_1_survey_data(ws):
+    df = pd.DataFrame
+    return df
+
+
+def get_data_audit_systems_1_survey_data(ws):
+    df = pd.DataFrame
+    return df
+
+
+survey_functions_map = {"austraffic_1": get_austraffic_1_survey_data, "ttm_1" : get_ttm_1_survey_data,
+                        "matrix_1": get_matrix_1_survey_data,
+                        " data_audit_systems_1": get_data_audit_systems_1_survey_data}
+
+
+def get_survey_data_main(excel_file_path, survey_format, sheet_name):
+    survey_sheet_info = find_survey_type(excel_file_path)
+    survey_format = survey_sheet_info['survey_format']
+    df = survey_functions_map[survey_format](excel_file_path, sheet_name=survey_sheet_info['sheet_name'])
+    return df
+
+
+def find_survey_type(excel_file_path):
+    wb = load_workbook(filename=excel_file_path)
+    sheets = wb.sheetnames
+    survey_format = None
+    # ws.get_squared_range(min_col=1, min_row=1, max_col=1, max_row=10)
+    if sheets == ['TABLE', 'excel_file_path']:
+        survey_format = 'austraffic_1'
+    elif wb[sheets[0]]["A1"].value.lower() == 'austraffic video intersection count':
+        survey_format = 'austraffic_1'
+    sheet_name = sheets[0]
+    survey_sheet_info = {'sheet_name': sheet_name,
+                         'survey_format': survey_format}
+    return survey_sheet_info
 
 
 def variable_is_number(no):
@@ -251,55 +482,6 @@ def closest_node(node, nodes):
     dist_2 = np.sum((nodes - node) ** 2, axis=1)
     return np.argmin(dist_2)
 
-
-def find_movement_dict_from_intersection_count(excel_file_path):
-    """
-    find relationship between turn movement numbers and origin to destination approach.  Approach is designated by North
-    (N), East (E), South (S) or West (W).
-    Parameters
-    ----------
-    excel_file_path (string): string of path to excel file
-
-    Returns
-    -------
-    Dict: {movement_1: Origin_Destination, movement_2, origin_destination}
-    """
-    xl = Dispatch('Excel.Application')
-    wb = xl.Workbooks.Open(Filename=excel_file_path)
-    ws = wb.Worksheets(1)
-    movement_dict = {}
-    intersection = ws.cells(4, 2).value
-    movement_dict['intersection'] = intersection
-    turns_dict = {}
-    peds_dict = {}
-    text_dict = {}
-    shapes = ws.shapes
-    for sh in shapes:
-        if shape_type_dict[sh.Type] == 'msoLine':
-            line_name = sh.Name
-            start_style = sh.Line.BeginArrowheadStyle
-            end_style = sh.Line.EndArrowheadStyle
-            cell_col = sh.TopLeftCell.Address.split("$")[1]
-            cell_row = sh.TopLeftCell.Address.split("$")[2]
-            cell = (int(cell_row), int(column_index_from_string(cell_col)))
-            shape_top = sh.top
-            shape_height = sh.height
-            shape_left = sh.left
-            shape_width = sh.width
-            hor_flip = sh.HorizontalFlip
-            ver_flip = sh.VerticalFlip
-            line_pos = find_point_positions(hor_flip, ver_flip, shape_top, shape_top - shape_height, shape_left,
-                                            shape_left + shape_width)
-            angle = compass_angle(line_pos[0], line_pos[1], excel_cell_format=True)
-            angle_round = int(custom_round(angle, base=45))
-            if arrow_head_style[end_style] == 'msoArrowheadTriangle':
-                movement, approach = find_turn_movement(ws, cell)
-                direction = direction_dict[angle_round]
-                movement_dict[str(movement)] = f"{approach}_{direction}"
-    wb.Close(True)
-    print(movement_dict)
-    df = pd.DataFrame.from_dict([movement_dict])
-    return df
 
 
 def find_point_in_linestring(line_str, point_index=0):
