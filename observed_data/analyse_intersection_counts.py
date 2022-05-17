@@ -9,6 +9,7 @@ import numbers
 from datetime import datetime, timedelta
 import time
 import pywintypes
+from IPython.display import display
 
 
 
@@ -100,22 +101,59 @@ def find_number_of_columns(ws, row_no, col_no):
     return col_no
 
 
-def find_count_data_rows(ws, row_from, loop_rows, search_strings):
+def check_cell_value_strings(ws, row_from, search_strings, loop_rows=None):
+    #search_strings = [str(x).lower() for x in search_strings]
     row_no = row_from
-    row_no_output = -1
-    while row_no <= row_from + loop_rows and row_no_output < 0:
+    output_row = -1
+    if loop_rows is None:
+        loop_rows = 99999
+    while row_no <= row_from + loop_rows and output_row < 0:
         cell_value = ws.cells(row_no, 1).value
-        if isinstance(search_strings, list):
-            if any(string_item.lower() in str(cell_value).lower(0) for string_item in search_strings):
-                row_no_output = row_no
+        if cell_value is None:
+            if search_strings is list:
+                if None in search_strings:
+                    output_row = row_no
+        elif isinstance(search_strings, list):
+            #any(ext in url_string for ext in extensionsToCheck)
+            if any(str(string_item).lower() in str(cell_value).lower() for string_item in search_strings):
+                output_row = row_no
         else:
             if search_strings.lower() in str(cell_value).lower():
-                row_no_output = row_no
+                output_row = row_no
         row_no += 1
-    return row_no_output
+    return output_row
+
+
+def find_count_data_rows(excel_file_path, sheet_name, ws, row_from, header_strings, df_end_strings):
+    search_for_additional_data = True
+    spreadsheet_df = None
+    dataframes = []
+    row_no = row_from
+    while search_for_additional_data:
+        header_row = check_cell_value_strings(ws, row_no, search_strings=header_strings, loop_rows=30)
+        if header_row == -1:
+            search_for_additional_data = False
+        else:
+            row_no = header_row
+            print(header_row, 'header_row')
+            use_columns = find_columns_used(ws, header_row + 1)
+            end_df_row = check_cell_value_strings(ws, row_no, search_strings=df_end_strings, loop_rows=None)
+            if end_df_row == -1:
+                search_for_additional_data = False
+            row_no = end_df_row
+            if search_for_additional_data:
+                data_df = pandas_read_excel_multi_index_with_use_cols(excel_file_path, sheet_name=sheet_name,
+                                                                      header_from=header_row-1, header_to=header_row,
+                                                                      n_rows=end_df_row - header_row+1,
+                                                                      use_cols=use_columns)
+                dataframes.append(data_df)
+    if dataframes:
+        spreadsheet_df = pd.concat(dataframes, ignore_index=True, axis=0)
+    return spreadsheet_df
 
 
 def get_data(ws):
+    # ToDo: check if this is used.
     row_loop = range(1, 11)
     col_loop = range(1, 11)
     survey_info_dict = {'survey_site': None, 'survey_date': None, 'survey_weather': None}
@@ -164,7 +202,7 @@ def pandas_read_excel_multi_index_with_use_cols(excel_file, sheet_name=0, header
                        sheet_name=sheet_name,
                        header=header_to+1,
                        index_col=[header_from, header_to],
-                       nrows=10,
+                       nrows=n_rows,
                        usecols=use_cols,
                        parse_dates=False)
     index = pd.read_excel(excel_file,
@@ -175,48 +213,43 @@ def pandas_read_excel_multi_index_with_use_cols(excel_file, sheet_name=0, header
                           nrows=2,
                           usecols=use_cols,
                           parse_dates=False)
+
     index = index.fillna(method='ffill', axis=1)
+    display(index)
+    display(df.head())
     df.columns = pd.MultiIndex.from_arrays(index.values)
     df.columns = df.columns.map(lambda x: '|'.join([str(i) for i in x]))
     df = df.reset_index(drop=True)
     return df
 
 
-def find_column_count(ws, row_no, col_from=1):
+def find_columns_used(ws, row_no, col_from=1):
     col_no = col_from
     while ws.cells(row_no, col_no).value is not None:
         col_no += 1
-    use_columns = list(range(col_from-1, col_no))
+    print(col_from, col_no)
+    start_col = get_column_letter(col_from)
+    end_col = get_column_letter(col_no)
+
+    use_columns = f'{start_col}:{end_col}'
     return use_columns
 
+'''
+def convert_spreadsheet_to_dataframe(excel_file_path, ws, sheet_name=0, search_strings_headings='Time',
+                                     search_strings_end=[None, 'Peak', 'Total'], row_no=1, loop_rows=30):
+    # ToDo: check if this is used
 
-def convert_spreadsheet_to_dataframe(ws, search_strings_headings, search_strings_end):
-    print('test')
+    while row_no != -1:
+        row_details = find_count_data_rows(excel_file_path, sheet_name, ws, row_from=1, loop_rows=30,
+                                           header_strings=search_strings_headings, df_end_strings=search_strings_end)
 
+        data_df = pandas_read_excel_multi_index_with_use_cols(excel_file_path, sheet_name, header_from=row_no - 1,
+                                                              header_to=row_no, n_rows=5, use_cols=use_columns)
+        row_no = row_details[-1]
+'''
 
-def get_austraffic_1_survey_data(excel_file_path, sheet_name):
-    # ToDo: updated doc string
-    """
-    find relationship between turn movement numbers and origin to destination approach.  Approach is designated by North
-    (N), East (E), South (S) or West (W).
-    Parameters
-    ----------
-    excel_file_path (string): string of path to excel file
-
-    Returns
-    -------
-    DataFrame: {movement_1: Origin_Destination, movement_2, origin_destination}
-    """
-    xl = Dispatch('Excel.Application')
-    wb = xl.Workbooks.Open(Filename=excel_file_path)
-    ws = wb.Worksheets(1)
-    get_data(ws)
+def create_movement_dict(ws):
     movement_dict = {}
-    intersection = ws.cells(4, 2).value
-    #movement_dict['intersection'] = intersection
-    turns_dict = {}
-    peds_dict = {}
-    text_dict = {}
     shapes = ws.shapes
     for sh in shapes:
         if shape_type_dict[sh.Type] == 'msoLine':
@@ -240,17 +273,31 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
                 movement, approach = find_turn_movement(ws, cell)
                 direction = direction_dict[angle_round]
                 movement_dict[str(movement)] = f"{approach}_{direction}"
+    return movement_dict
 
-    row_no = find_count_data_rows(ws, row_from=1, loop_rows=30, search_strings='Time')
-    use_columns = find_column_count(ws, row_no + 1)
-    data_df = pandas_read_excel_multi_index_with_use_cols(excel_file_path, sheet_name, header_from=row_no - 1,
-                                                         header_to=row_no, n_rows=5,
-                                                         use_cols=use_columns)
-    #data_df = add_survey_details_to_dataframe(data_df, )
+def get_austraffic_1_survey_data(excel_file_path, sheet_name):
+    # ToDo: updated doc string
+    """
+    find relationship between turn movement numbers and origin to destination approach.  Approach is designated by North
+    (N), East (E), South (S) or West (W).
+    Parameters
+    ----------
+    excel_file_path (string): string of path to excel file
+
+    Returns
+    -------
+    DataFrame: {movement_1: Origin_Destination, movement_2, origin_destination}
+    """
+    xl = Dispatch('Excel.Application')
+    wb = xl.Workbooks.Open(Filename=excel_file_path)
+    ws = wb.Worksheets(sheet_name)
+    movement_dict = create_movement_dict(ws)
+    df = find_count_data_rows(excel_file_path, sheet_name, ws, row_from=1, header_strings='Time',
+                              df_end_strings=[None, 'Peak', 'Total'])
+
     wb.Close(True)
-    print(movement_dict)
-    df = pd.DataFrame.from_dict([movement_dict])
-    return data_df
+    #df = pd.DataFrame.from_dict([movement_dict])
+    return df
 
 
 def get_ttm_1_survey_data(ws):
@@ -292,6 +339,7 @@ def find_survey_type(excel_file_path):
     sheet_name = sheets[0]
     survey_sheet_info = {'sheet_name': sheet_name,
                          'survey_format': survey_format}
+    wb.close()
     return survey_sheet_info
 
 
