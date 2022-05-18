@@ -11,7 +11,10 @@ import time
 import pywintypes
 from IPython.display import display
 
-
+import os, sys
+script_folder = r'C:\General\BCC_Software\Python\python_repository\python_library\python_main_bcc'
+if script_folder not in sys.path:sys.path.append(script_folder)
+from gis import osm_tools as osm
 
 # https://docs.microsoft.com/en-us/office/vba/api/office.msoshapetype
 shape_type_dict = {30: 'mso3DModel',
@@ -151,14 +154,10 @@ def find_count_data_rows(excel_file_path, sheet_name, ws, row_from, header_strin
     return spreadsheet_df
 
 
-def get_data(ws):
-    # ToDo: check if this is used.
+def get_survey_info(ws):
     row_loop = range(1, 11)
     col_loop = range(1, 11)
     survey_info_dict = {'survey_site': None, 'survey_date': None, 'survey_weather': None}
-    survey_date = None
-    survey_site = None
-    survey_weather = None
     for col in col_loop:
         for row in row_loop:
             cell_value = ws.cells(row, col).value
@@ -170,8 +169,6 @@ def get_data(ws):
                 survey_info_dict['survey_date'] = py_date
             elif 'weather' in str(cell_value).lower():
                 survey_info_dict['survey_weather'] = ws.cells(row, col + 1).value
-
-    row_start = 1
 
     return survey_info_dict
 
@@ -289,11 +286,25 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
     movement_dict = create_movement_dict(ws)
     df = find_count_data_rows(excel_file_path, sheet_name, ws, row_from=1, header_strings='Time',
                               df_end_strings=[None, 'Peak', 'Total'])
-
+    survey_info_dict = get_survey_info(ws)
+    df_melt = df.melt(id_vars=['TIME|(1/4 hr end)'], var_name='spreadsheet_movement|vehicle', value_name='count')
+    df_melt[['spreadsheet_movement', 'vehicle']] = df_melt['spreadsheet_movement|vehicle'].str.split('|', expand=True)
+    df_melt = df_melt.drop(['spreadsheet_movement|vehicle'], axis=1)
+    df_melt['spreadsheet_movement'] = df_melt['spreadsheet_movement'].str.replace("movement ", "", case=False)
+    df_melt['movement'] = df_melt['spreadsheet_movement'].map(movement_dict)
+    df_melt['intersection'] = survey_info_dict['survey_site']
+    df_melt['date'] = survey_info_dict['survey_date']
+    df_melt['weather'] = survey_info_dict['survey_weather']
+    df_melt = df_melt.rename(columns={'TIME|(1/4 hr end)': 'survey_time'})
     wb.Close(True)
-    #df = pd.DataFrame.from_dict([movement_dict])
-    return df
+    coords = osm.geocode_coordinates(survey_info_dict['survey_site'], user_agent='Engineering_Services_BCC', api='here')
+    display(survey_info_dict['survey_site'], coords)
+    df_melt['intersection_lat'] = coords[0]
+    df_melt['intersection_lon'] = coords[1]
+    counts_gdf = gpd.GeoDataFrame(df_melt, geometry=gpd.points_from_xy(df_melt.intersection_lon, df_melt.intersection_lat), crs='epsg:4326')
 
+    #df = pd.DataFrame.from_dict([movement_dict])
+    return counts_gdf
 
 def get_ttm_1_survey_data(ws):
     df = pd.DataFrame
@@ -481,7 +492,7 @@ def custom_round(x, base=5):
 
 def find_point_positions(hor, ver, top, bottom, left, right):
     """
-    Find the start and end poistions of an 'msoline' from MS excel
+    Find the start and end positions of an 'msoline' from MS excel
     Parameters
     ----------
     hor(int): represents the horizontal lip of the line.  0 if left to right, -1 if right to left.
@@ -549,3 +560,5 @@ def add_direction_columns_to_gdf(gdf, geometry_col='geometry', angle_col='angle'
     gdf.loc[:, 'direction_4'] = gdf['angle_round_90'].map(direction_dict)
     gdf.loc[:, 'direction_8'] = gdf['angle_round_45'].map(direction_dict)
     return gdf
+
+
