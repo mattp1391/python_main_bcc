@@ -227,3 +227,21 @@ def add_direction_columns_to_gdf(gdf, geometry_col='geometry', angle_col='angle'
     gdf.loc[:, 'direction_4'] = gdf['angle_round_90'].map(direction_dict)
     gdf.loc[:, 'direction_8'] = gdf['angle_round_45'].map(direction_dict)
     return gdf
+
+
+def direction_dict():
+    dict_ = {0: 'N',
+             45: 'NE',
+             90: 'E',
+             135: 'SE',
+             180: 'S',
+             225: 'SW',
+             270: 'W',
+             315: 'NW',
+             360: 'N',
+             -45: 'NW',
+             -90: 'W',
+             -135: 'SW',
+             -180: 'S'
+             }
+    return dict_

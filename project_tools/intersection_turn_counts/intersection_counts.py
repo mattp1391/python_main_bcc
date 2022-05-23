@@ -1,17 +1,13 @@
 from win32com.client import Dispatch
-from openpyxl import load_workbook, Workbook
+from openpyxl import load_workbook
 from PIL import ImageGrab
 from openpyxl.utils import get_column_letter, column_index_from_string
-import numpy as np
-import math
 import geopandas as gpd
 import pandas as pd
 import numbers
-from datetime import datetime, timedelta
-import time
-import pywintypes
+from datetime import datetime
 from IPython.display import display
-import os, sys
+import sys
 
 script_folder = r'C:\General\BCC_Software\Python\python_repository\python_library\python_main_bcc'
 if script_folder not in sys.path: sys.path.append(script_folder)
@@ -58,21 +54,6 @@ arrow_head_style = {1: 'msoArrowheadNone',
                     5: 'msoArrowheadDiamond',
                     6: 'msoArrowheadOval',
                     -2: 'msoArrowheadStyleMixed'}
-
-direction_dict = {0: 'N',
-                  45: 'NE',
-                  90: 'E',
-                  135: 'SE',
-                  180: 'S',
-                  225: 'SW',
-                  270: 'W',
-                  315: 'NW',
-                  360: 'N',
-                  -45: 'NW',
-                  -90: 'W',
-                  -135: 'SW',
-                  -180: 'S'
-                  }
 
 # https://docs.microsoft.com/en-us/office/vba/api/excel.xlhalign
 excel_horizontal_alignment_dict = {-4108: 'Center',
@@ -264,6 +245,7 @@ def create_movement_dict(ws):
             angle_round = int(gis.custom_round(angle, base=45))
             if arrow_head_style[end_style] == 'msoArrowheadTriangle':
                 movement, approach = find_turn_movement(ws, cell)
+                direction_dict = direction_dict()
                 direction = direction_dict[angle_round]
                 movement_dict[str(movement)] = f"{approach}_{direction}"
     return movement_dict
@@ -434,7 +416,7 @@ def find_point_positions(hor, ver, top, bottom, left, right):
 
 def get_excel_image(file_path, sheet_name, range=None):
     xl = Dispatch('Excel.Application')
-    #xl.visible = False
+    # xl.visible = False
     wb = xl.Workbooks.Open(file_path)
     ws = wb.Worksheets[sheet_name]
     ws.Range(ws.Cells(1, 8), ws.Cells(15, 36)).Copy()
