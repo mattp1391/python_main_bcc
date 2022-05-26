@@ -1,7 +1,12 @@
-from win32com.client import Dispatch
-from openpyxl import load_workbook, Workbook
 from geopy import geocoders, Point
+import matplotlib
+from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.colors import LinearSegmentedColormap
+from PIL import Image
 from geopy.distance import distance as geopy_distance
+import contextily as cx
 import time
 from PIL import ImageGrab
 from openpyxl.utils import get_column_letter, column_index_from_string
@@ -22,12 +27,14 @@ from gis import osm_tools as osm
 
 
 google_geo_code_key = 'AIzaSyDgFypRMb-gnE9eaFjiWjcdc6T4JpjGUAo'
-
+proxies = {'http': 'http://165.225.226.22:10170',
+           'https': 'http://165.225.226.22:10170'}
 
 def geocode_coordinates(address, user_agent='Engineering_Services_BCC', api='osm'):
     lat_ = None
     long_ = None
     location_ = None
+
     if api.lower() == 'osm':
         app = geocoders.Photon(user_agent=user_agent, proxies='165.225.226.22:10170')
         time.sleep(2)
@@ -224,12 +231,13 @@ def add_direction_columns_to_gdf(gdf, geometry_col='geometry', angle_col='angle'
     gdf.loc[:, angle_col] = gdf.apply(lambda row: find_angle_of_linestring(row[geometry_col]), axis=1)
     gdf.loc[:, 'angle_round_90'] = gdf.apply(lambda row: custom_round(row[angle_col], 90), axis=1)
     gdf.loc[:, 'angle_round_45'] = gdf.apply(lambda row: custom_round(row[angle_col], 45), axis=1)
+    direction_dict = get_direction_dict()
     gdf.loc[:, 'direction_4'] = gdf['angle_round_90'].map(direction_dict)
     gdf.loc[:, 'direction_8'] = gdf['angle_round_45'].map(direction_dict)
     return gdf
 
 
-def direction_dict():
+def get_direction_dict():
     dict_ = {0: 'N',
              45: 'NE',
              90: 'E',
@@ -245,3 +253,30 @@ def direction_dict():
              -180: 'S'
              }
     return dict_
+
+
+
+def plot_gdf_with_map(gdf_link, gdf_node, label='NodeId', colour_col=None, cmap=None, marker_size=300,
+                      text_size='text_size'):
+    gdf_with_map = gdf_link.to_crs(epsg=3857)
+    gdf_node_map = gdf_node.to_crs(epsg=3857)
+    ax = gdf_node_map.plot(markersize=marker_size, c='black', figsize=(10, 10))
+    gdf_with_map.plot(colour_col, ax=ax, cmap=cmap, figsize=(10, 10), alpha=0.5, linewidth=10.0)
+
+    for x, y, label, text_size in zip(gdf_node_map.geometry.x, gdf_node_map.geometry.y, gdf_node_map[label],
+                                      gdf_node_map[text_size]):
+        ax.annotate(label, xy=(x, y), xytext=(3, 3), textcoords="offset points", fontsize=text_size)
+    ax.set_axis_off()
+    #for x, y, label in zip(gdf_link['geometry'].x, gdf_link['geometry'].y, gdf_link['label']):
+    #    ax.annotate(label, xy=(x, y), xytext=(3, 3), textcoords="offset points")
+    #cx.add_basemap(ax, source=cx.providers.Esri.WorldImagery)
+    cx.add_basemap(ax, source=cx.providers.HEREv3.satelliteDay(apiKey='hROuZ5fSMweHJUgssiq6oehaPsd6u8-qMeF6CGN-SOQ', proxies='165.225.226.22:10170'))
+    cx.add_basemap(ax, source=cx.providers.HEREv3.mapLabels(apiKey='hROuZ5fSMweHJUgssiq6oehaPsd6u8-qMeF6CGN-SOQ', size=128, proxies='165.225.226.22:10170'))
+    canvas = plt.get_current_fig_manager().canvas
+    agg = canvas.switch_backends(FigureCanvasAgg)
+    #agg.draw()
+    s, (width, height) = agg.print_to_buffer()
+    # Convert to a NumPy array.
+    #X = np.frombuffer(s, np.uint8).reshape((height, width, 4))
+    im = Image.frombytes("RGBA", (width, height), s)
+    return im
