@@ -1,34 +1,24 @@
-from geopy import geocoders, Point
-import matplotlib
-from matplotlib.figure import Figure
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_agg import FigureCanvasAgg
-from matplotlib.colors import LinearSegmentedColormap
-from PIL import Image
-from geopy.distance import distance as geopy_distance
-import contextily as cx
-import time
-from PIL import ImageGrab
-from openpyxl.utils import get_column_letter, column_index_from_string
-import numpy as np
 import math
-import geopandas as gpd
-import pandas as pd
-import numbers
-from datetime import datetime, timedelta
+import sys
 import time
-import pywintypes
-from IPython.display import display
-import os, sys
+
+import contextily as cx
+import geopandas as gpd
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from PIL import Image
+from geopy import geocoders, Point
+from geopy.distance import distance as geopy_distance
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+
 script_folder = r'C:\General\BCC_Software\Python\python_repository\python_library\python_main_bcc'
-if script_folder not in sys.path:sys.path.append(script_folder)
-from gis import osm_tools as osm
-
-
+if script_folder not in sys.path: sys.path.append(script_folder)
 
 google_geo_code_key = 'AIzaSyDgFypRMb-gnE9eaFjiWjcdc6T4JpjGUAo'
 proxies = {'http': 'http://165.225.226.22:10170',
            'https': 'http://165.225.226.22:10170'}
+
 
 def geocode_coordinates(address, user_agent='Engineering_Services_BCC', api='osm'):
     lat_ = None
@@ -211,14 +201,13 @@ def closest_node(node, nodes):
     return np.argmin(dist_2)
 
 
-
 def find_point_in_linestring(line_str, point_index=0):
     coordinates = line_str.coords
     point = coordinates[point_index]
     return point
 
 
-def find_angle_of_linestring(linestring, point_1_index=-1, point_2_index=0):
+def find_angle_of_linestring(linestring, point_1_index=0, point_2_index=-1):
     line_str_coordinates = linestring.coords
     point_1 = line_str_coordinates[point_1_index]
     point_2 = line_str_coordinates[point_2_index]
@@ -255,28 +244,187 @@ def get_direction_dict():
     return dict_
 
 
-
 def plot_gdf_with_map(gdf_link, gdf_node, label='NodeId', colour_col=None, cmap=None, marker_size=300,
                       text_size='text_size'):
     gdf_with_map = gdf_link.to_crs(epsg=3857)
     gdf_node_map = gdf_node.to_crs(epsg=3857)
-    ax = gdf_node_map.plot(markersize=marker_size, c='black', figsize=(10, 10))
-    gdf_with_map.plot(colour_col, ax=ax, cmap=cmap, figsize=(10, 10), alpha=0.5, linewidth=10.0)
+    ax = gdf_with_map.plot(colour_col, cmap=cmap, figsize=(10, 10), alpha=0.5, linewidth=10.0)
+    gdf_node_map.plot(ax=ax, markersize=marker_size, c='black')
 
+    ax.plot()
     for x, y, label, text_size in zip(gdf_node_map.geometry.x, gdf_node_map.geometry.y, gdf_node_map[label],
                                       gdf_node_map[text_size]):
         ax.annotate(label, xy=(x, y), xytext=(3, 3), textcoords="offset points", fontsize=text_size)
     ax.set_axis_off()
-    #for x, y, label in zip(gdf_link['geometry'].x, gdf_link['geometry'].y, gdf_link['label']):
+    # for x, y, label in zip(gdf_link['geometry'].x, gdf_link['geometry'].y, gdf_link['label']):
     #    ax.annotate(label, xy=(x, y), xytext=(3, 3), textcoords="offset points")
-    #cx.add_basemap(ax, source=cx.providers.Esri.WorldImagery)
-    cx.add_basemap(ax, source=cx.providers.HEREv3.satelliteDay(apiKey='hROuZ5fSMweHJUgssiq6oehaPsd6u8-qMeF6CGN-SOQ', proxies='165.225.226.22:10170'))
-    cx.add_basemap(ax, source=cx.providers.HEREv3.mapLabels(apiKey='hROuZ5fSMweHJUgssiq6oehaPsd6u8-qMeF6CGN-SOQ', size=128, proxies='165.225.226.22:10170'))
+    # cx.add_basemap(ax, source=cx.providers.Esri.WorldImagery)
+    cx.add_basemap(ax, source=cx.providers.HEREv3.satelliteDay(apiKey='hROuZ5fSMweHJUgssiq6oehaPsd6u8-qMeF6CGN-SOQ',
+                                                               proxies='165.225.226.22:10170'))
+    cx.add_basemap(ax,
+                   source=cx.providers.HEREv3.mapLabels(apiKey='hROuZ5fSMweHJUgssiq6oehaPsd6u8-qMeF6CGN-SOQ', size=128,
+                                                        proxies='165.225.226.22:10170'))
     canvas = plt.get_current_fig_manager().canvas
     agg = canvas.switch_backends(FigureCanvasAgg)
-    #agg.draw()
     s, (width, height) = agg.print_to_buffer()
-    # Convert to a NumPy array.
-    #X = np.frombuffer(s, np.uint8).reshape((height, width, 4))
     im = Image.frombytes("RGBA", (width, height), s)
     return im
+
+
+def create_sections_gdf(sections_file, crs=None):
+    gdf = gpd.read_file(sections_file)
+    gdf = gdf.astype({'ANode': 'str', 'BNode': 'str', 'CNode': 'str'})
+    gdf.loc[:, 'link_a_b'] = gdf['ANode'] + "_" + gdf['BNode']
+    gdf = add_direction_columns_to_gdf(gdf)
+    return gdf
+
+
+def create_nodes_gdf(nodes_file, crs='epsg:4326'):
+    gdf = gpd.read_file(nodes_file, crs=crs)
+    gdf = gdf.astype({'NodeId': 'str'})
+    return gdf
+
+
+def find_node_distance_from_intersection(nodes_gdf, lat=None, lon=None, survey_df=None):
+    if lat is None and lon is None:
+        if survey_df is not None:
+            intersection_gdf = survey_df[['intersection', 'geometry']].drop_duplicates().to_crs(crs=nodes_gdf.crs)
+    else:
+        # ToDo: Create geodataframe from lat and lon
+        print('NEED TO CREATE GEOPDATAFRAME FROM LAT< LON PROVIDED')
+    joined_gdf = gpd.sjoin_nearest(nodes_gdf, intersection_gdf, how='inner', distance_col='join_distance')
+    return joined_gdf
+
+
+def get_intersection_node(df):
+    closest_node_from_df = df[df['join_distance'] == df['join_distance'].min()]['NodeId'].iloc[0]
+    return closest_node_from_df
+
+
+def find_intersection_links(sections_gdf, intersection_links, nodes):
+    links_from_gdf = sections_gdf[sections_gdf['BNode'].isin(nodes)]
+    links_from_gdf.loc[:, 'approach_type'] = 'from'
+    links_to_gdf = sections_gdf[sections_gdf['ANode'].isin(nodes)]
+    links_to_gdf.loc[:, 'approach_type'] = 'to'
+    links_gdf = pd.concat([links_from_gdf, links_to_gdf])
+    '''
+    links_gdf.loc[:, 'angle'] = links_gdf.apply(
+        lambda row: compass_angle((row['AXco'], row['AYco']), (row['BXco'], row['BYco']), False), axis=1)
+    links_gdf.loc[:, 'angle_round_8'] = links_gdf.apply(lambda row: custom_round(row['angle'], 45),
+                                                                        axis=1)
+    links_gdf.loc[:, 'direction_8'] = links_gdf['angle_round'].map(get_direction_dict)
+    links_gdf.loc[:, 'angle_round_4'] = links_gdf.apply(lambda row: custom_round(row['angle'], 90),
+                                                                        axis=1)
+    links_gdf.loc[:, 'direction_4'] = links_gdf['angle_round'].map(get_direction_dict)
+    '''
+    links_gdf.loc[:, 'colour'] = np.where(links_gdf['link_a_b'].isin(intersection_links), 0, 1)
+    return links_gdf
+
+
+def sort_dictionary(dictionary):
+    keys = dictionary.keys()
+    keys.sort(key=lambda k: (k[0], int(k[1:])))
+    return map(dictionary.get, keys)
+
+
+def add_to_log(xl_file, log_type=0, log_file_assessed = True, comments=None):
+    if log_file_assessed:
+        log_file = r"D:\MP\projects\bcasm\log files\files_analysed.txt"
+        with open(log_file, "a") as file_object:
+            file_object.write(f"{xl_file}, {comments}")
+    else:
+        log_file = r"D:\MP\projects\bcasm\log files\files_not_analysed.txt"
+        with open(log_file, "a") as file_object:
+            file_object.write(f"{xl_file}, {log_type}, {comments}")
+
+
+def create_csv_output_file(df, movements):
+    print('create output code')
+
+
+
+def create_map_image(add_to_database, ijk_movements, xl_file, survey_df):# int_node, excel_file_path, sections_gdf, nodes_gdf, dist_within=150):
+
+    output_folder = r"D:\MP\projects\bcasm\log files\traffic_intersection_outputs"
+
+    if add_to_database == 0:
+        #ToDo add this to the log of unknown counts
+        add_to_log(xl_file, add_to_database, comments="approaches don't match")
+    elif add_to_database == 1:
+        #ToDo add this to the database and log of known counts
+        print('add to database and log')
+        add_to_log(xl_file, add_to_database, comments=None)
+        create_csv_output_file
+
+    elif add_to_database == 2:
+        log_for_later = True
+        if log_for_later:
+            add_to_log(xl_file, add_to_database, comments='use_map_for_this')
+        else:
+            # ToDo: add coded below
+            print('fix this later')
+            '''
+            add_to_log(log_file, xl_file, log_type, comments=None)
+            links_from_df = sections_gdf[(sections_gdf['BNode'] == int_node)]
+            links_to_df = sections_gdf[(sections_gdf['ANode'] == int_node)]
+            links_df = pd.concat([links_from_df, links_to_df])
+            intersection_links = links_df['link_a_b'].unique().tolist()
+            nodes = nodes_gdf[nodes_gdf['join_distance'] <= dist_within]['NodeId'].unique().tolist()
+            links_gdf = find_intersection_links(sections_gdf, intersection_links, nodes)
+
+            nodes_to_map = links_gdf['ANode'].unique().tolist()
+            nodes_to_map.append(links_gdf['BNode'].unique().tolist())
+            nodes_to_map = nodes_gdf[nodes_gdf['NodeId'].isin(nodes_to_map)]
+            nodes_to_map.loc[:, 'marker_size'] = np.where(nodes_to_map['NodeId'] == int_node, 300, 150)
+            nodes_to_map.loc[:, 'text_size'] = np.where(nodes_to_map['NodeId'] == int_node, 20, 10)
+
+            cmap = LinearSegmentedColormap.from_list('mycmap', [(0, 'red'), (1, 'grey')])
+            #plot_gdf_with_map(gdf_link, gdf_node, label='NodeId', colour_col=None, cmap=None, marker_size=300,
+            #                  text_size='text_size'):
+
+            map_image = plot_gdf_with_map(links_gdf, nodes_to_map, cmap=cmap, label='NodeId', colour_col='colour',
+                                          marker_size='marker_size', text_size='text_size')
+            xl_img = aic.get_excel_image(file_path=excel_file_path, sheet_name='Sheet1', range=None)
+            '''
+    return #map_image
+
+
+def filter_direction(gdf, direction_col, direction):
+    movement_gdf = gdf[(gdf[direction_col] == direction)]
+    return movement_gdf
+
+
+def find_ijk(sections_gdf, nodes_gdf, movement_dict=None):
+    int_node = get_intersection_node(nodes_gdf)
+    from_gdf = sections_gdf[(sections_gdf['BNode'] == int_node)]
+    to_gdf = sections_gdf[(sections_gdf['ANode'] == int_node)]
+    add_to_database = 1 # value of zero will add to the log of unknowns.
+    approach_to_direction = {'N': 'S', 'NE': 'SW', 'E': 'W', 'SE': 'NW', 'S': 'N', 'SW': 'NE', 'W': 'E', 'NW': 'SE'}
+    i = None
+    j = None
+    k = None
+    movement_ijk_dict = {}
+    for excel_key, movement in movement_dict.items():
+
+        approaches = movement.split('_')
+        from_8_approach = filter_direction(from_gdf, 'direction_8', approach_to_direction[approaches[0]])
+        to_8_approach = filter_direction(to_gdf, 'direction_8', approaches[1])
+        if len(from_8_approach) == 1 and len(to_8_approach) == 1:
+            i = from_8_approach['ANode'].iloc[0]
+            j = int_node
+            k = to_8_approach['BNode'].iloc[0]
+            movement_ijk_dict[excel_key] = [i, j, k]
+        else:
+            from_4_approach = filter_direction(from_gdf, 'direction_4', approach_to_direction[approaches[0]])
+            to_4_approach = filter_direction(to_gdf, 'direction_4', approaches[1])
+            if len(from_4_approach) == 1 and len(to_4_approach) == 1:
+                i = from_8_approach['ANode'].iloc[0]
+                j = int_node
+                k = from_8_approach['BNode'].iloc[0]
+                movement_ijk_dict[excel_key] = [i, j, k]
+                add_to_database = 2 # 2 result in displaying
+            else:
+                add_to_database = 0
+                return add_to_database, movement_ijk_dict
+    return add_to_database, movement_ijk_dict
+

@@ -4,6 +4,7 @@ from PIL import ImageGrab
 from openpyxl.utils import get_column_letter, column_index_from_string
 import geopandas as gpd
 import pandas as pd
+import numpy as np
 import numbers
 from datetime import datetime
 from IPython.display import display
@@ -245,7 +246,7 @@ def create_movement_dict(ws):
             angle_round = int(gis.custom_round(angle, base=45))
             if arrow_head_style[end_style] == 'msoArrowheadTriangle':
                 movement, approach = find_turn_movement(ws, cell)
-                direction_dict = direction_dict()
+                direction_dict = gis.get_direction_dict()
                 direction = direction_dict[angle_round]
                 movement_dict[str(movement)] = f"{approach}_{direction}"
     return movement_dict
@@ -272,8 +273,14 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
                               df_end_strings=[None, 'Peak', 'Total'])
     survey_info_dict = get_survey_info(ws)
     df_melt = df.melt(id_vars=['TIME|(1/4 hr end)'], var_name='spreadsheet_movement|vehicle', value_name='count')
-    df_melt[['spreadsheet_movement', 'vehicle']] = df_melt['spreadsheet_movement|vehicle'].str.split('|', expand=True)
-    df_melt = df_melt.drop(['spreadsheet_movement|vehicle'], axis=1)
+    df_melt[['temp_spreadsheet_movement', 'temp_vehicle']] = df_melt['spreadsheet_movement|vehicle'].str.split('|',
+                                                                                                               expand=True)
+    df_melt['vehicle'] = np.where(df_melt['temp_spreadsheet_movement'].str.lower().str.contains('pedestrian'),
+                                  'pedestrian', df_melt['temp_vehicle'])
+    df_melt['spreadsheet_movement'] = np.where(df_melt['temp_spreadsheet_movement'].str.lower().str.contains('pedestrian'),
+                                               df_melt['temp_vehicle'], df_melt['temp_spreadsheet_movement'])
+    df_melt = df_melt.drop(columns=['temp_spreadsheet_movement', 'temp_vehicle', 'spreadsheet_movement|vehicle'],
+                           axis=1)
     df_melt['spreadsheet_movement'] = df_melt['spreadsheet_movement'].str.replace("movement ", "", case=False)
     df_melt['movement'] = df_melt['spreadsheet_movement'].map(movement_dict)
     df_melt['intersection'] = survey_info_dict['survey_site']
@@ -282,7 +289,6 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
     df_melt = df_melt.rename(columns={'TIME|(1/4 hr end)': 'survey_time'})
     wb.Close(True)
     coords = gis.geocode_coordinates(survey_info_dict['survey_site'], user_agent='Engineering_Services_BCC', api='here')
-    display(survey_info_dict['survey_site'], coords)
     df_melt['intersection_lat'] = coords[0]
     df_melt['intersection_lon'] = coords[1]
     counts_gdf = gpd.GeoDataFrame(df_melt,
@@ -290,7 +296,7 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
                                   crs='epsg:4326')
 
     # df = pd.DataFrame.from_dict([movement_dict])
-    return counts_gdf
+    return counts_gdf, movement_dict
 
 
 def get_ttm_1_survey_data(ws):
@@ -390,12 +396,12 @@ def find_point_positions(hor, ver, top, bottom, left, right):
     Find the start and end positions of an 'msoline' from MS excel
     Parameters
     ----------
-    hor(int): represents the horizontal lip of the line.  0 if left to right, -1 if right to left.
+    hor: represents the horizontal lip of the line.  0 if left to right, -1 if right to left.
     ver: represents the horizontal lip of the line.  0 if top to bottom, -1 if bottom to top.
     top: y position of the top point.
     bottom: y position of the bottom point
     left: x position of the left most point
-    right x position of the right most point
+    right: x position of the right most point
 
     Returns
     -------
@@ -416,13 +422,16 @@ def find_point_positions(hor, ver, top, bottom, left, right):
 
 def get_excel_image(file_path, sheet_name, range=None):
     xl = Dispatch('Excel.Application')
-    # xl.visible = False
     wb = xl.Workbooks.Open(file_path)
     ws = wb.Worksheets[sheet_name]
     ws.Range(ws.Cells(1, 8), ws.Cells(15, 36)).Copy()
     img = ImageGrab.grabclipboard()
-    # imgFile = os.path.join(path_to_img, 'test.jpg')
-    # img.save(imgFile)
-    # img.show()
+    wb.Application.CutCopyMode = False
     wb.Close(True)
     return img
+
+
+def check_approach_match(xl_approaches, gis_approaches_4, gis_approaches_8=None):
+    print('todo')
+
+
