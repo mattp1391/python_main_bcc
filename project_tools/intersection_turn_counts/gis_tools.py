@@ -11,9 +11,15 @@ from PIL import Image
 from geopy import geocoders, Point
 from geopy.distance import distance as geopy_distance
 from matplotlib.backends.backend_agg import FigureCanvasAgg
+from IPython.display import display
+from shapely import wkt
 
 script_folder = r'C:\General\BCC_Software\Python\python_repository\python_library\python_main_bcc'
 if script_folder not in sys.path: sys.path.append(script_folder)
+from project_tools.intersection_turn_counts import file_utls
+from importlib import reload
+
+reload(file_utls)
 
 google_geo_code_key = 'AIzaSyDgFypRMb-gnE9eaFjiWjcdc6T4JpjGUAo'
 proxies = {'http': 'http://165.225.226.22:10170',
@@ -38,7 +44,7 @@ def geocode_coordinates(address, user_agent='Engineering_Services_BCC', api='osm
     elif api.lower() == 'google':
         app = geocoders.GoogleV3(user_agent=user_agent, proxies='165.225.226.22:10170', api_key=google_geo_code_key)
         time.sleep(2)
-    print(address, api)
+    # print(address, api)
     location_ = app.geocode(address)
 
     if location_ is not None:
@@ -201,9 +207,32 @@ def closest_node(node, nodes):
     return np.argmin(dist_2)
 
 
-def find_point_in_linestring(line_str, point_index=0):
+def wkt_loads(wkt_col):
+    """
+    converts wkt into geopandas geometry.
+    Parameters
+    ----------
+    wkt_col
+
+    Returns
+    -------
+    geometry column from wkt col
+    """
+    try:
+        return wkt.loads(wkt_col)
+    except Exception:
+        return None
+
+
+def find_point_in_linestring(line_str, point_index=0, gdf_point=True):
     coordinates = line_str.coords
+    #if len(coordinates)==1:
+    #    print (1)
     point = coordinates[point_index]
+    #lat = point[0]
+    #lon = point[1]
+    #wkt_point = f'POINT ({lat} {lon})'
+
     return point
 
 
@@ -273,8 +302,9 @@ def plot_gdf_with_map(gdf_link, gdf_node, label='NodeId', colour_col=None, cmap=
 
 def create_sections_gdf(sections_file, crs=None):
     gdf = gpd.read_file(sections_file)
-    gdf = gdf.astype({'ANode': 'str', 'BNode': 'str', 'CNode': 'str'})
-    gdf.loc[:, 'link_a_b'] = gdf['ANode'] + "_" + gdf['BNode']
+    gdf.columns = gdf.columns.str.lower()
+    #isplay(gdf.head())
+    gdf = gdf.astype({'anode': 'str', 'bnode': 'str', 'cnode': 'str'})
     gdf = add_direction_columns_to_gdf(gdf)
     return gdf
 
@@ -297,14 +327,16 @@ def find_node_distance_from_intersection(nodes_gdf, lat=None, lon=None, survey_d
 
 
 def get_intersection_node(df):
+    display(df.head(), 2)
+    display(df[df['join_distance'] == df['join_distance'].min()]['NodeId'])
     closest_node_from_df = df[df['join_distance'] == df['join_distance'].min()]['NodeId'].iloc[0]
     return closest_node_from_df
 
 
 def find_intersection_links(sections_gdf, intersection_links, nodes):
-    links_from_gdf = sections_gdf[sections_gdf['BNode'].isin(nodes)]
+    links_from_gdf = sections_gdf[sections_gdf['b_node'].isin(nodes)]
     links_from_gdf.loc[:, 'approach_type'] = 'from'
-    links_to_gdf = sections_gdf[sections_gdf['ANode'].isin(nodes)]
+    links_to_gdf = sections_gdf[sections_gdf['a_node'].isin(nodes)]
     links_to_gdf.loc[:, 'approach_type'] = 'to'
     links_gdf = pd.concat([links_from_gdf, links_to_gdf])
     '''
@@ -327,39 +359,36 @@ def sort_dictionary(dictionary):
     return map(dictionary.get, keys)
 
 
-def add_to_log(xl_file, log_type=0, log_file_assessed = True, comments=None):
-    if log_file_assessed:
+def add_to_log(xl_file, log_type, df=None, movements=None, comments=None):
+    if log_type == 1:
         log_file = r"D:\MP\projects\bcasm\log files\files_analysed.txt"
+        df['ijk'] = df['spreadsheet_movement'].map(movements)
+        file_utls.create_csv_output_file(df, xl_file, output_folder=None)
         with open(log_file, "a") as file_object:
             file_object.write(f"{xl_file}, {comments}")
     else:
         log_file = r"D:\MP\projects\bcasm\log files\files_not_analysed.txt"
         with open(log_file, "a") as file_object:
-            file_object.write(f"{xl_file}, {log_type}, {comments}")
+            file_object.write(f"\n{xl_file}, {log_type}, {comments}")
+    return
 
 
-def create_csv_output_file(df, movements):
-    print('create output code')
-
-
-
-def create_map_image(add_to_database, ijk_movements, xl_file, survey_df):# int_node, excel_file_path, sections_gdf, nodes_gdf, dist_within=150):
-
-    output_folder = r"D:\MP\projects\bcasm\log files\traffic_intersection_outputs"
-
+def create_map_image(add_to_database, ijk_movements, xl_file,
+                     survey_df):  # int_node, excel_file_path, sections_gdf, nodes_gdf, dist_within=150):
     if add_to_database == 0:
-        #ToDo add this to the log of unknown counts
+        # ToDo add this to the log of unknown counts
         add_to_log(xl_file, add_to_database, comments="approaches don't match")
     elif add_to_database == 1:
-        #ToDo add this to the database and log of known counts
+        # ToDo add this to the database and log of known counts
         print('add to database and log')
         add_to_log(xl_file, add_to_database, comments=None)
-        create_csv_output_file
+
 
     elif add_to_database == 2:
         log_for_later = True
         if log_for_later:
             add_to_log(xl_file, add_to_database, comments='use_map_for_this')
+
         else:
             # ToDo: add coded below
             print('fix this later')
@@ -386,7 +415,7 @@ def create_map_image(add_to_database, ijk_movements, xl_file, survey_df):# int_n
                                           marker_size='marker_size', text_size='text_size')
             xl_img = aic.get_excel_image(file_path=excel_file_path, sheet_name='Sheet1', range=None)
             '''
-    return #map_image
+    return  # map_image
 
 
 def filter_direction(gdf, direction_col, direction):
@@ -394,37 +423,89 @@ def filter_direction(gdf, direction_col, direction):
     return movement_gdf
 
 
-def find_ijk(sections_gdf, nodes_gdf, movement_dict=None):
+def find_ijk(sections_gdf, nodes_gdf, survey_gdf, movement_dict=None):
     int_node = get_intersection_node(nodes_gdf)
-    from_gdf = sections_gdf[(sections_gdf['BNode'] == int_node)]
-    to_gdf = sections_gdf[(sections_gdf['ANode'] == int_node)]
-    add_to_database = 1 # value of zero will add to the log of unknowns.
+    from_gdf = sections_gdf[(sections_gdf['b_node_id'] == int_node)]
+    to_gdf = sections_gdf[(sections_gdf['a_node_id'] == int_node)]
+    #display('sections_gdf', sections_gdf, sections_gdf.info())
+    #display('from_gdf', from_gdf)
+    #display('int_node', int_node)
+
+    add_to_database = 1  # value of zero will add to the log of unknowns.
     approach_to_direction = {'N': 'S', 'NE': 'SW', 'E': 'W', 'SE': 'NW', 'S': 'N', 'SW': 'NE', 'W': 'E', 'NW': 'SE'}
     i = None
     j = None
     k = None
     movement_ijk_dict = {}
+    #display('movement_ijk_dict', movement_ijk_dict)
     for excel_key, movement in movement_dict.items():
 
         approaches = movement.split('_')
+        #display('movement', movement)
         from_8_approach = filter_direction(from_gdf, 'direction_8', approach_to_direction[approaches[0]])
         to_8_approach = filter_direction(to_gdf, 'direction_8', approaches[1])
+        #display(approaches[0])
+        #display('from', from_8_approach)
+        #display(approaches[1])
+        #display('to', to_8_approach)
         if len(from_8_approach) == 1 and len(to_8_approach) == 1:
-            i = from_8_approach['ANode'].iloc[0]
+
+            i = from_8_approach['a_node_id'].iloc[0]
             j = int_node
-            k = to_8_approach['BNode'].iloc[0]
-            movement_ijk_dict[excel_key] = [i, j, k]
+            k = to_8_approach['b_node_id'].iloc[0]
+            movement_ijk_dict[excel_key] = f'{i}_{j}_{k}'
+            survey_gdf['movement']
         else:
             from_4_approach = filter_direction(from_gdf, 'direction_4', approach_to_direction[approaches[0]])
             to_4_approach = filter_direction(to_gdf, 'direction_4', approaches[1])
             if len(from_4_approach) == 1 and len(to_4_approach) == 1:
-                i = from_8_approach['ANode'].iloc[0]
+                i = from_4_approach['a_node_id'].iloc[0]
                 j = int_node
-                k = from_8_approach['BNode'].iloc[0]
+                k = from_4_approach['b_node_id'].iloc[0]
                 movement_ijk_dict[excel_key] = [i, j, k]
-                add_to_database = 2 # 2 result in displaying
+                add_to_database = 2  # 2 result in displaying
             else:
                 add_to_database = 0
                 return add_to_database, movement_ijk_dict
+
     return add_to_database, movement_ijk_dict
 
+
+def find_geometry_of_link_node(df, node_col, nodes_gdf):
+    df = df[[node_col]]
+    df['lon'] = df.apply(lambda x: x[node_col][0], axis=1)
+    df['lat'] = df.apply(lambda x: x[node_col][1], axis=1)
+    df = df.drop_duplicates()
+    gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df['lon'], df['lat']))
+    joined_df = gpd.sjoin_nearest(gdf, nodes_gdf, how='inner', distance_col='join_distance_a')
+    joined_df = joined_df[[node_col, 'NodeId']]
+    return joined_df
+
+
+def find_node_start_and_end(network_links_gdf, nodes_gdf, start_node_col='a_node', end_node_col='b_node',
+                            link_id='link_a_b'):
+    """
+
+    Parameters
+    ----------
+    sections_gdf ( geodataframe): geodataframe containing network links
+    nodes_gdf (geodataframe): geodataframe containing node points
+
+    Returns
+    -------
+    sections_gdf geodataframe with 3 additional columns which contain the start node, end node and link_id
+    ('start_node_end_node').
+    """
+    network_links_gdf.loc[:, start_node_col] = network_links_gdf.apply(
+        lambda row: find_point_in_linestring(row['geometry'], point_index=0), axis=1)
+
+    network_links_gdf.loc[:, end_node_col] = network_links_gdf.apply(
+        lambda row: find_point_in_linestring(row['geometry'], point_index=-1), axis=1)
+    a_joined = find_geometry_of_link_node(network_links_gdf, start_node_col, nodes_gdf)
+    output_gdf = pd.merge(network_links_gdf, a_joined[[start_node_col, 'NodeId']])
+    output_gdf = output_gdf.rename(columns={'NodeId': 'a_node_id'})
+    b_joined = find_geometry_of_link_node(network_links_gdf, end_node_col, nodes_gdf)
+    output_gdf = pd.merge(output_gdf, b_joined[[end_node_col, 'NodeId']])
+    output_gdf = output_gdf.rename(columns={'NodeId': 'b_node_id'})
+    output_gdf.loc[:, link_id] = output_gdf['a_node_id'] + "_" + output_gdf['b_node_id']
+    return output_gdf

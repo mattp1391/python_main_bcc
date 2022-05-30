@@ -1,21 +1,13 @@
-from win32com.client import Dispatch
-from openpyxl import load_workbook, Workbook
-from PIL import ImageGrab
-from openpyxl.utils import get_column_letter, column_index_from_string
-import numpy as np
-import math
-import geopandas as gpd
-import pandas as pd
-import numbers
-from datetime import datetime, timedelta
-import time
-import pywintypes
-from IPython.display import display
-import pathlib
 import os, sys, glob
 
-script_folder = r'C:\General\BCC_Software\Python\python_repository\python_library\python_main_bcc'
-if script_folder not in sys.path: sys.path.append(script_folder)
+
+def check_file_path_is_folder_or_directory(file_path):
+    file_type = None
+    if os.path.isfile(file_path):
+        file_type = 'file'
+    elif os.path.isdir(file_path):
+        file_type = 'directory'
+    return file_type
 
 
 def check_if_folder_exists(my_dir):
@@ -41,5 +33,16 @@ def get_list_of_files_in_directory(path, file_type = None, sub_folders=False):
         text_files = glob.glob(f"{path}/*{file_type}", recursive=True)
     return text_files
 
+
+def create_csv_output_file(df, xl_file, output_folder=None, output_type=None):
+    print('create csv output')
+    if output_type is None:
+        output_type = '.csv.'
+    output_name = xl_file.split('.xl', 1)[0] + output_type
+    if output_folder is None:
+        output_folder = r"D:\MP\projects\bcasm\log files\traffic_intersection_outputs"
+    output_file = os.path.join(output_folder, output_name)
+    df.to_csv(output_file, index=False)
+    return
 
 

@@ -108,6 +108,42 @@ def check_cell_value_strings(ws, row_from, search_strings, loop_rows=None):
     return output_row
 
 
+def create_header(ws, header_top, rows, col_left, columns):
+    rows = [*range(header_top, header_top+rows+1, 1)]
+    cols = [*range(col_left, columns+1, 1)]
+    #print('rows', rows)
+    #print('cols', cols)
+    header=[]
+    previous_head = None
+    for c in cols:
+        top_row = True
+        head = ""
+        for r in rows:
+
+            cell_value = ws.cells(r, c).value
+            print('cell_value', cell_value, type(cell_value))
+            if top_row:
+                if cell_value is not None:
+                    head = str(cell_value)
+                    previous_head = head
+                    top_row = False
+                else:
+                    head = previous_head
+                    previous_head = head
+                    top_row = False
+            elif cell_value is not None:
+                #print('cell_value', cell_value, type(cell_value))
+                print(head)
+                head += f'|{cell_value}'
+        header.append(head)
+    return header
+
+
+
+    #print(header_top, header_bottom, columns)
+    return
+
+
 def find_count_data_rows(excel_file_path, sheet_name, ws, row_from, header_strings, df_end_strings):
     search_for_additional_data = True
     spreadsheet_df = None
@@ -115,12 +151,23 @@ def find_count_data_rows(excel_file_path, sheet_name, ws, row_from, header_strin
     row_no = row_from
     while search_for_additional_data:
         header_row = check_cell_value_strings(ws, row_no, search_strings=header_strings, loop_rows=30)
+
         if header_row == -1:
             search_for_additional_data = False
         else:
-            row_no = header_row
-            use_columns = find_columns_used(ws, header_row + 1)
+            header_end = check_cell_value_strings(ws, row_no, search_strings=['(1/4 hr end)'], loop_rows=30)
+            row_no = header_end
+
+            use_columns = find_columns_used(ws, header_end)
+
+            start_col = column_index_from_string(use_columns.split(':')[0])
+            end_col = column_index_from_string(use_columns.split(':')[1])
+            create_header(ws, header_row, header_end - header_row, start_col, end_col-start_col+1)
+
+            header = create_header(ws, header_row, header_end - header_row, 1, header_end)
+            display(header)
             end_df_row = check_cell_value_strings(ws, row_no, search_strings=df_end_strings, loop_rows=None) - 1
+            # display('end_of_row', end_df_row)
             if end_df_row == -1:
                 search_for_additional_data = False
             row_no = end_df_row
@@ -129,9 +176,13 @@ def find_count_data_rows(excel_file_path, sheet_name, ws, row_from, header_strin
                                                                       header_from=header_row - 1, header_to=header_row,
                                                                       n_rows=end_df_row - (header_row + 1),
                                                                       use_cols=use_columns)
+                if data_df is None:
+                    return None
                 dataframes.append(data_df)
     if dataframes:
-        spreadsheet_df = pd.concat(dataframes)
+        for df in dataframes:
+            display(df.head())
+        spreadsheet_df = pd.concat(dataframes, ignore_index=True)
     return spreadsheet_df
 
 
@@ -173,32 +224,36 @@ def pandas_read_excel_multi_index_with_use_cols(excel_file, sheet_name=0, header
     object (dataframe)
     """
     # df = pd.read_excel(excel_file, sheet_name=sheet_name, header=[header_from, header_to], nrows=n_rows, usecols=use_cols
-    df = pd.read_excel(excel_file,
-                       sheet_name=sheet_name,
-                       header=header_to,
-                       index_col=[header_from, header_to],
-                       nrows=n_rows,
-                       usecols=use_cols,
-                       parse_dates=False)
-    index = pd.read_excel(excel_file,
-                          sheet_name=sheet_name,
-                          header=None,
-                          skiprows=header_from,
-                          index_col=[header_from, header_to],
-                          nrows=2,
-                          usecols=use_cols,
-                          parse_dates=False)
+    try:
+        df = pd.read_excel(excel_file,
+                           sheet_name=sheet_name,
+                           header=header_to,
+                           index_col=[header_from, header_to],
+                           nrows=n_rows,
+                           usecols=use_cols,
+                           parse_dates=False)
+        index = pd.read_excel(excel_file,
+                              sheet_name=sheet_name,
+                              header=None,
+                              skiprows=header_from,
+                              index_col=[header_from, header_to],
+                              nrows=2,
+                              usecols=use_cols,
+                              parse_dates=False)
 
-    index = index.fillna(method='ffill', axis=1)
-    df.columns = pd.MultiIndex.from_arrays(index.values)
-    df.columns = df.columns.map(lambda x: '|'.join([str(i) for i in x]))
-    df = df.reset_index(drop=True)
-
+        index = index.fillna(method='ffill', axis=1)
+        df.columns = pd.MultiIndex.from_arrays(index.values)
+        df.columns = df.columns.map(lambda x: '|'.join([str(i) for i in x]))
+        df = df.reset_index(drop=True)
+    except:
+        df = None
     return df
 
 
 def find_columns_used(ws, row_no, col_from=1):
     col_no = col_from
+    if ws.cells(row_no, col_no).value is None:
+        row_no += 1
     while ws.cells(row_no, col_no).value is not None:
         col_no += 1
     start_col = get_column_letter(col_from)
@@ -245,6 +300,7 @@ def create_movement_dict(ws):
             angle = gis.compass_angle(line_pos[0], line_pos[1], excel_cell_format=True)
             angle_round = int(gis.custom_round(angle, base=45))
             if arrow_head_style[end_style] == 'msoArrowheadTriangle':
+                # display(line_name)
                 movement, approach = find_turn_movement(ws, cell)
                 direction_dict = gis.get_direction_dict()
                 direction = direction_dict[angle_round]
@@ -271,14 +327,18 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
     movement_dict = create_movement_dict(ws)
     df = find_count_data_rows(excel_file_path, sheet_name, ws, row_from=1, header_strings='Time',
                               df_end_strings=[None, 'Peak', 'Total'])
+    if df is None:
+        wb.Close(True)
+        return None, None
     survey_info_dict = get_survey_info(ws)
     df_melt = df.melt(id_vars=['TIME|(1/4 hr end)'], var_name='spreadsheet_movement|vehicle', value_name='count')
     df_melt[['temp_spreadsheet_movement', 'temp_vehicle']] = df_melt['spreadsheet_movement|vehicle'].str.split('|',
                                                                                                                expand=True)
     df_melt['vehicle'] = np.where(df_melt['temp_spreadsheet_movement'].str.lower().str.contains('pedestrian'),
                                   'pedestrian', df_melt['temp_vehicle'])
-    df_melt['spreadsheet_movement'] = np.where(df_melt['temp_spreadsheet_movement'].str.lower().str.contains('pedestrian'),
-                                               df_melt['temp_vehicle'], df_melt['temp_spreadsheet_movement'])
+    df_melt['spreadsheet_movement'] = np.where(
+        df_melt['temp_spreadsheet_movement'].str.lower().str.contains('pedestrian'),
+        df_melt['temp_vehicle'], df_melt['temp_spreadsheet_movement'])
     df_melt = df_melt.drop(columns=['temp_spreadsheet_movement', 'temp_vehicle', 'spreadsheet_movement|vehicle'],
                            axis=1)
     df_melt['spreadsheet_movement'] = df_melt['spreadsheet_movement'].str.replace("movement ", "", case=False)
@@ -320,10 +380,28 @@ survey_functions_map = {"austraffic_1": get_austraffic_1_survey_data, "ttm_1": g
 
 
 def get_survey_data_main(excel_file_path):
-    survey_sheet_info = find_survey_type(excel_file_path)
-    survey_format = survey_sheet_info['survey_format']
-    df = survey_functions_map[survey_format](excel_file_path, sheet_name=survey_sheet_info['sheet_name'])
-    return df
+    # ToDo: add capability for .xls files
+    if excel_file_path.endswith('.xls'):
+        df = None
+        movement_dict = None
+    else:
+        survey_sheet_info = find_survey_type(excel_file_path)
+        survey_format = survey_sheet_info['survey_format']
+        # display(excel_file_path, survey_sheet_info, survey_format)
+        if survey_format is not None:
+            df, movement_dict = survey_functions_map[survey_format](excel_file_path,
+                                                                    sheet_name=survey_sheet_info['sheet_name'])
+            display(movement_dict)
+            if movement_dict is not None:
+                if 'None' in movement_dict:
+                    # ToDo: update movement dict for text boxes??
+                    df = None
+                    movement_dict = None
+        else:
+            df = None
+            movement_dict = None
+
+    return df, movement_dict
 
 
 def find_survey_type(excel_file_path):
@@ -333,8 +411,9 @@ def find_survey_type(excel_file_path):
     # ws.get_squared_range(min_col=1, min_row=1, max_col=1, max_row=10)
     if sheets == ['TABLE', 'excel_file_path']:
         survey_format = 'austraffic_1'
-    elif wb[sheets[0]]["A1"].value.lower() == 'austraffic video intersection count':
-        survey_format = 'austraffic_1'
+    elif wb[sheets[0]]["A1"].value is not None:
+        if wb[sheets[0]]["A1"].value.lower() == 'austraffic video intersection count':
+            survey_format = 'austraffic_1'
     sheet_name = sheets[0]
     survey_sheet_info = {'sheet_name': sheet_name,
                          'survey_format': survey_format}
@@ -371,14 +450,20 @@ def find_turn_movement(worksheet, cell):
     """
     movement = None
     approach = None
-    n_movement = worksheet.cells(cell[0] - 2, cell[1]).value
+    movement_found = False
     e_movement = worksheet.cells(cell[0], cell[1] + 1).value
-    s_movement = worksheet.cells(cell[0] + 2, cell[1]).value
     w_movement = worksheet.cells(cell[0], cell[1] - 1).value
+    n_movement = worksheet.cells(cell[0] - 1, cell[1]).value
+    if n_movement is None:
+        worksheet.cells(cell[0] - 2, cell[1]).value
+    s_movement = worksheet.cells(cell[0] + 2, cell[1]).value
+    if s_movement is None:
+        worksheet.cells(cell[0] - 1, cell[1]).value
+
     if variable_is_number(n_movement):
         movement = int(n_movement)
         approach = 'N'
-    if variable_is_number(e_movement):
+    elif variable_is_number(e_movement):
         movement = int(e_movement)
         approach = 'E'
     elif variable_is_number(s_movement):
@@ -433,5 +518,3 @@ def get_excel_image(file_path, sheet_name, range=None):
 
 def check_approach_match(xl_approaches, gis_approaches_4, gis_approaches_8=None):
     print('todo')
-
-
