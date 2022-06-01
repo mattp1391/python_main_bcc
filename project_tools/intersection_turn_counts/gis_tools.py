@@ -13,6 +13,7 @@ from geopy.distance import distance as geopy_distance
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from IPython.display import display
 from shapely import wkt
+from shapely.geometry import LineString
 
 script_folder = r'C:\General\BCC_Software\Python\python_repository\python_library\python_main_bcc'
 if script_folder not in sys.path: sys.path.append(script_folder)
@@ -226,12 +227,12 @@ def wkt_loads(wkt_col):
 
 def find_point_in_linestring(line_str, point_index=0, gdf_point=True):
     coordinates = line_str.coords
-    #if len(coordinates)==1:
+    # if len(coordinates)==1:
     #    print (1)
     point = coordinates[point_index]
-    #lat = point[0]
-    #lon = point[1]
-    #wkt_point = f'POINT ({lat} {lon})'
+    # lat = point[0]
+    # lon = point[1]
+    # wkt_point = f'POINT ({lat} {lon})'
 
     return point
 
@@ -303,9 +304,8 @@ def plot_gdf_with_map(gdf_link, gdf_node, label='NodeId', colour_col=None, cmap=
 def create_sections_gdf(sections_file, crs=None):
     gdf = gpd.read_file(sections_file)
     gdf.columns = gdf.columns.str.lower()
-    #isplay(gdf.head())
+    # isplay(gdf.head())
     gdf = gdf.astype({'anode': 'str', 'bnode': 'str', 'cnode': 'str'})
-    gdf = add_direction_columns_to_gdf(gdf)
     return gdf
 
 
@@ -327,8 +327,8 @@ def find_node_distance_from_intersection(nodes_gdf, lat=None, lon=None, survey_d
 
 
 def get_intersection_node(df):
-    display(df.head(), 2)
-    display(df[df['join_distance'] == df['join_distance'].min()]['NodeId'])
+    #display(df.head(), 2)
+    #display(df[df['join_distance'] == df['join_distance'].min()]['NodeId'])
     closest_node_from_df = df[df['join_distance'] == df['join_distance'].min()]['NodeId'].iloc[0]
     return closest_node_from_df
 
@@ -363,6 +363,7 @@ def add_to_log(xl_file, log_type, df=None, movements=None, comments=None):
     if log_type == 1:
         log_file = r"D:\MP\projects\bcasm\log files\files_analysed.txt"
         df['ijk'] = df['spreadsheet_movement'].map(movements)
+        df[['i', 'j', 'k']] = df['ijk'].str.split("_", expand=True)
         file_utls.create_csv_output_file(df, xl_file, output_folder=None)
         with open(log_file, "a") as file_object:
             file_object.write(f"{xl_file}, {comments}")
@@ -423,13 +424,14 @@ def filter_direction(gdf, direction_col, direction):
     return movement_gdf
 
 
-def find_ijk(sections_gdf, nodes_gdf, survey_gdf, movement_dict=None):
+def find_ijk_SS(sections_gdf, nodes_gdf, survey_gdf, movement_dict=None):
     int_node = get_intersection_node(nodes_gdf)
     from_gdf = sections_gdf[(sections_gdf['b_node_id'] == int_node)]
     to_gdf = sections_gdf[(sections_gdf['a_node_id'] == int_node)]
-    #display('sections_gdf', sections_gdf, sections_gdf.info())
-    #display('from_gdf', from_gdf)
-    #display('int_node', int_node)
+    # display('sections_gdf', sections_gdf, sections_gdf.info())
+    # display('from_gdf', from_gdf)
+    # display('to_gdf', to_gdf)
+    # display('int_node', int_node, type(int_node))
 
     add_to_database = 1  # value of zero will add to the log of unknowns.
     approach_to_direction = {'N': 'S', 'NE': 'SW', 'E': 'W', 'SE': 'NW', 'S': 'N', 'SW': 'NE', 'W': 'E', 'NW': 'SE'}
@@ -437,22 +439,22 @@ def find_ijk(sections_gdf, nodes_gdf, survey_gdf, movement_dict=None):
     j = None
     k = None
     movement_ijk_dict = {}
-    #display('movement_ijk_dict', movement_ijk_dict)
+    # display('movement_ijk_dict', movement_ijk_dict)
     for excel_key, movement in movement_dict.items():
 
         approaches = movement.split('_')
-        #display('movement', movement)
+        # display('movement', movement)
         from_8_approach = filter_direction(from_gdf, 'direction_8', approach_to_direction[approaches[0]])
         to_8_approach = filter_direction(to_gdf, 'direction_8', approaches[1])
-        #display(approaches[0])
-        #display('from', from_8_approach)
-        #display(approaches[1])
-        #display('to', to_8_approach)
+        # display(approaches[0])
+        # display('from', from_8_approach)
+        # display(approaches[1])
+        # display('to', to_8_approach)
         if len(from_8_approach) == 1 and len(to_8_approach) == 1:
 
-            i = from_8_approach['a_node_id'].iloc[0]
-            j = int_node
-            k = to_8_approach['b_node_id'].iloc[0]
+            i = str(from_8_approach['a_node_id'].iloc[0])
+            j = str(int_node)
+            k = str(to_8_approach['b_node_id'].iloc[0])
             movement_ijk_dict[excel_key] = f'{i}_{j}_{k}'
             survey_gdf['movement']
         else:
@@ -461,9 +463,18 @@ def find_ijk(sections_gdf, nodes_gdf, survey_gdf, movement_dict=None):
             if len(from_4_approach) == 1 and len(to_4_approach) == 1:
                 i = from_4_approach['a_node_id'].iloc[0]
                 j = int_node
-                k = from_4_approach['b_node_id'].iloc[0]
-                movement_ijk_dict[excel_key] = [i, j, k]
-                add_to_database = 2  # 2 result in displaying
+                k = to_4_approach['b_node_id'].iloc[0]
+                movement_ijk_dict[excel_key] = f'{i}_{j}_{k}'
+
+                angle = float(from_4_approach['angle'].iloc[0])
+                angle_90 = float(from_4_approach['angle_round_90'].iloc[0])
+                angle_from_dif = min(abs(angle_90 - angle), abs(angle_90 - angle + 360), abs(angle_90 - angle - 360))
+                angle_to = float(from_4_approach['angle'].iloc[0])
+                angle_to_90 = float(from_4_approach['angle_round_90'].iloc[0])
+                angle_to_dif = min(abs(angle_to_90 - angle_to), abs(angle_to_90 - angle_to + 360),
+                                   abs(angle_to_90 - angle_to - 360))
+                if angle_to_dif >= 30 and angle_from_dif >= 30:
+                    add_to_database = 2  # 2 result in displaying
             else:
                 add_to_database = 0
                 return add_to_database, movement_ijk_dict
@@ -480,6 +491,21 @@ def find_geometry_of_link_node(df, node_col, nodes_gdf):
     joined_df = gpd.sjoin_nearest(gdf, nodes_gdf, how='inner', distance_col='join_distance_a')
     joined_df = joined_df[[node_col, 'NodeId']]
     return joined_df
+
+
+def reverse_coordinates(line_str):
+    coordinates = line_str.coords
+    coordinates = coordinates[::-1]
+    return coordinates
+
+
+def create_linestring(coordinates):
+    if len(coordinates) > 1:
+        line_str = LineString(coordinates)
+
+    else:
+        line_str = 'delete me'
+    return line_str
 
 
 def find_node_start_and_end(network_links_gdf, nodes_gdf, start_node_col='a_node', end_node_col='b_node',
@@ -507,5 +533,88 @@ def find_node_start_and_end(network_links_gdf, nodes_gdf, start_node_col='a_node
     b_joined = find_geometry_of_link_node(network_links_gdf, end_node_col, nodes_gdf)
     output_gdf = pd.merge(output_gdf, b_joined[[end_node_col, 'NodeId']])
     output_gdf = output_gdf.rename(columns={'NodeId': 'b_node_id'})
+    output_gdf = output_gdf[['geometry', 'a_node', 'b_node', 'a_node_id', 'b_node_id']]
+    # output_gdf_2 = output_gdf.copy()
+    output_gdf_2 = output_gdf.rename(columns={'a_node': 'b_node', 'b_node': 'a_node', 'a_node_id': 'b_node_id',
+                                              'b_node_id': 'a_node_id'})
+    # output_gdf_2['coordinates_reversed'] = output_gdf_2['geometry'].coords.reverse()
+    # arr.reverse()
+
+    #tqdm.pandas()
+    output_gdf_2['coordinates_reversed'] = output_gdf_2.apply(lambda row: reverse_coordinates(row['geometry']), axis=1)
+
+    output_gdf_2['line_str_reversed'] = output_gdf_2.apply(
+        lambda row: create_linestring(row['coordinates_reversed']), axis=1)  # Create a linestring column
+    output_gdf_2 = output_gdf_2[output_gdf_2['line_str_reversed'] != 'delete me']
+    output_gdf_2 = output_gdf_2.drop('geometry', axis=1) #Drop WKT column
+    output_gdf_2 = output_gdf_2.set_geometry(col='line_str_reversed')
+    output_gdf_2 = output_gdf_2.rename(columns={'line_str_reversed': 'geometry'})
+    output_gdf_2 = output_gdf_2[['geometry', 'a_node', 'b_node', 'a_node_id', 'b_node_id']]
+    output_gdf = pd.concat([output_gdf, output_gdf_2])
     output_gdf.loc[:, link_id] = output_gdf['a_node_id'] + "_" + output_gdf['b_node_id']
+    output_gdf.drop_duplicates()
+    output_gdf = add_direction_columns_to_gdf(output_gdf)
     return output_gdf
+
+
+def find_ijk(sections_gdf, nodes_gdf, survey_gdf, movement_dict=None):
+    int_node = get_intersection_node(nodes_gdf)
+    from_gdf = sections_gdf[(sections_gdf['b_node_id'] == int_node)]
+    to_gdf = sections_gdf[(sections_gdf['a_node_id'] == int_node)]
+    # display('sections_gdf', sections_gdf, sections_gdf.info())
+    # display('from_gdf', from_gdf)
+    # display('to_gdf', to_gdf)
+    # display('int_node', int_node, type(int_node))
+
+    add_to_database = 1  # value of zero will add to the log of unknowns.
+    approach_to_direction = {'N': 'S', 'NE': 'SW', 'E': 'W', 'SE': 'NW', 'S': 'N', 'SW': 'NE', 'W': 'E', 'NW': 'SE'}
+    i = []
+    j = []
+    k = []
+    #movement_ijk_dict = {}
+    # display('movement_ijk_dict', movement_ijk_dict)
+    direction_movements = []
+    excel_keys = []
+    for excel_key, movement in movement_dict.items():
+        approaches = movement.split('_')
+        from_8_approach_df = filter_direction(from_gdf, 'direction_8', approach_to_direction[approaches[0]])
+        to_8_approach_df = filter_direction(to_gdf, 'direction_8', approaches[1])
+        if len(from_8_approach_df) == 1 and len(to_8_approach_df) == 1:
+
+            i.append(str(from_8_approach_df['a_node_id'].iloc[0]))
+            j.append(str(int_node))
+            k.append(str(to_8_approach_df['b_node_id'].iloc[0]))
+            from_approach = from_8_approach_df['direction_8'].iloc[0]
+            to_approach = approach_to_direction[to_8_approach_df['direction_8'].iloc[0]]
+            direction_movements.append(f"{from_approach}_{to_approach}")
+            #movement_ijk_dict[excel_key] = f'{i}_{j}_{k}'
+        else:
+            from_4_approach_df = filter_direction(from_gdf, 'direction_4', approach_to_direction[approaches[0]])
+            to_4_approach_df = filter_direction(to_gdf, 'direction_4', approaches[1])
+            if len(from_4_approach_df) == 1 and len(to_4_approach_df) == 1:
+                i.append(str(from_4_approach_df['a_node_id'].iloc[0]))
+                j.append(str(int_node))
+                k.append(str(to_4_approach_df['b_node_id'].iloc[0]))
+                from_approach = from_4_approach_df['direction_8'].iloc[0]
+                to_approach = approach_to_direction[to_4_approach_df['direction_8'].iloc[0]]
+                direction_movements.append(f"{from_approach}_{to_approach}")
+                angle = float(from_4_approach_df['angle'].iloc[0])
+                angle_90 = float(from_4_approach_df['angle_round_90'].iloc[0])
+                angle_from_dif = min(abs(angle_90 - angle), abs(angle_90 - angle + 360), abs(angle_90 - angle - 360))
+                angle_to = float(from_4_approach_df['angle'].iloc[0])
+                angle_to_90 = float(from_4_approach_df['angle_round_90'].iloc[0])
+                angle_to_dif = min(abs(angle_to_90 - angle_to), abs(angle_to_90 - angle_to + 360),
+                                   abs(angle_to_90 - angle_to - 360))
+                if angle_to_dif >= 35 and angle_from_dif >= 35:
+                    add_to_database = 1.1  # all approaches within 70 degrees of assumed direction.'
+            else:
+                add_to_database = 2 # not a 1 is to 1 relationship found.
+                i.append(None)
+                j.append(None)
+                k.append(None)
+                direction_movements.append(None)
+        excel_keys.append(excel_key)
+    movement_ijk_dict = {'excel_movement': excel_keys, 'geographic_movement': direction_movements, 'i': i, 'j': j, 'k': k}
+    return add_to_database, movement_ijk_dict
+
+

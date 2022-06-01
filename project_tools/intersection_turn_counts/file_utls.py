@@ -35,13 +35,14 @@ def get_list_of_files_in_directory(path, file_type = None, sub_folders=False):
 
 
 def create_csv_output_file(df, xl_file, output_folder=None, output_type=None):
-    print('create csv output')
+    #print('create csv output')
     if output_type is None:
         output_type = '.csv.'
     output_name = xl_file.split('.xl', 1)[0] + output_type
-    if output_folder is None:
-        output_folder = r"D:\MP\projects\bcasm\log files\traffic_intersection_outputs"
-    output_file = os.path.join(output_folder, output_name)
+    #print(output_name)
+    #if output_folder is None:
+    #    output_folder = r"D:\MP\projects\bcasm\log files\traffic_intersection_outputs"
+    output_file = os.path.join(output_name, output_name)
     df.to_csv(output_file, index=False)
     return
 
