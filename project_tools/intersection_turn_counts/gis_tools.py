@@ -476,6 +476,9 @@ def find_ijk_SS(sections_gdf, nodes_gdf, survey_gdf, movement_dict=None):
                 if angle_to_dif >= 30 and angle_from_dif >= 30:
                     add_to_database = 2  # 2 result in displaying
             else:
+                # display('from_4_approach', from_4_approach)
+                # display('to_4_approach', to_4_approach)
+                # display(movement_dict, excel_key, movement, approach_to_direction[approaches[0]], approaches[1])
                 add_to_database = 0
                 return add_to_database, movement_ijk_dict
 
