@@ -352,14 +352,20 @@ def find_col_widths(ws, start_range=1, end_range=31):
         current_width += cell_width
     return col_positions
 
-'''
-def find_nearest_cell():
-    >> > from scipy import spatial
-    >> > airports = [(10, 10), (20, 20), (30, 30), (40, 40)]
-    >> > tree = spatial.KDTree(airports)
-    >> > tree.query([(21, 21)])
-    (array([1.41421356]), array([1]))
-'''
+
+def find_nearest_position(locations, position):
+    if type(locations) is dict:
+        locations = list(locations.keys())
+    locations = np.array(locations)
+    position = np.array(position)
+    distances = np.linalg.norm(locations - position, axis=1)
+    min_index = np.argmin(distances)
+    closest_point = locations[min_index]
+    closest_distance = distances[min_index]
+    closest_point = (closest_point[0], closest_point[1])
+    return closest_point, closest_distance
+
+
 
 def find_row_positions(ws, start_range=1, end_range=31):
     row_positions=[]
@@ -386,10 +392,8 @@ def find_nearest(list_, value):
         cell_location = list_.index(min_value_greater)
     return cell_location
 
-def create_movement_dict(ws):
-    movement_dict = {}
-    shapes = ws.shapes
-    '''
+
+def get_text_box_locations_in_dictionary(ws, shapes):
     text_box_dict = {}
     col_positions = find_col_widths(ws, start_range=1, end_range=31)
     #print(col_positions)
@@ -398,43 +402,56 @@ def create_movement_dict(ws):
     for sh in shapes:
         if shape_type_dict[sh.Type] == 'msoTextBox':
             shape_top = sh.top
-            shape_left = sh.left
-            #print('text box: ', sh.Name, sh.TopLeftCell.Address, sh.BottomRightCell.Address)
-            pos_row = find_nearest(row_positions, shape_top)
-            pos_col = find_nearest(col_positions, shape_left)
-            text_box_value = str(ws.TextBoxes(sh.Name).Text)
-            print('position: ', pos_row, pos_col, text_box_value, text_box_value.replace('.', '', 1).isdigit())
-            #print(shape_left)
-            if pos_row is not None and pos_col is not None and text_box_value.replace('.', '', 1).isdigit():
-                text_box_dict[(pos_row, pos_col)] = text_box_value
-    display(text_box_dict)
-    '''
-    for sh in shapes:
-        if shape_type_dict[sh.Type] == 'msoLine':
-            line_name = sh.Name
-            start_style = sh.Line.BeginArrowheadStyle
-            end_style = sh.Line.EndArrowheadStyle
-            begin_style = sh.Line.BeginArrowheadStyle
-            #print('begin_style', begin_style)
-            cell_col = sh.TopLeftCell.Address.split("$")[1]
-            cell_row = sh.TopLeftCell.Address.split("$")[2]
-            cell = (int(cell_row), int(column_index_from_string(cell_col)))
-            #print('cell: ' , sh.TopLeftCell.ColumnWidth)
-            shape_top = sh.top
             shape_height = sh.height
             shape_left = sh.left
             shape_width = sh.width
-            hor_flip = sh.HorizontalFlip
-            ver_flip = sh.VerticalFlip
-            line_pos = find_point_positions(hor_flip, ver_flip, shape_top, shape_top - shape_height, shape_left,
-                                            shape_left + shape_width)
-            angle = gis.compass_angle(line_pos[0], line_pos[1], excel_cell_format=True)
-            angle_round = int(gis.custom_round(angle, base=45))
+            shape_pos_row = shape_top + shape_height/2
+            shape_pos_col = shape_left + shape_width/2
+            #print('text box: ', sh.Name, sh.TopLeftCell.Address, sh.BottomRightCell.Address)
+            pos_row = find_nearest(row_positions, shape_pos_row)
+            pos_col = find_nearest(col_positions, shape_pos_col)
+            text_box_value = str(ws.TextBoxes(sh.Name).Text)
+            #print('position: ', pos_row, pos_col, text_box_value, text_box_value.replace('.', '', 1).isdigit())
+            #print(shape_left)
+            if pos_row is not None and pos_col is not None and text_box_value.replace('.', '', 1).isdigit():
+                text_box_dict[(shape_pos_row, shape_pos_col)] = text_box_value
+    if text_box_dict == {}:
+        text_box_dict = None
+    return text_box_dict
+
+
+def create_movement_dict(ws):
+    movement_dict = {}
+    shapes = ws.shapes
+    text_box_dict = get_text_box_locations_in_dictionary(ws, shapes)
+    display(text_box_dict)
+    for sh in shapes:
+        if shape_type_dict[sh.Type] == 'msoLine':
+            line_name = sh.Name
+            end_style = sh.Line.EndArrowheadStyle
+            begin_style = sh.Line.BeginArrowheadStyle
             if (arrow_head_style[end_style] == 'msoArrowheadTriangle' and
                     arrow_head_style[begin_style] == 'msoArrowheadNone'):
-                movement, approach = find_turn_movement(ws, cell)
+                # print('begin_style', begin_style)
+                cell_col = sh.TopLeftCell.Address.split("$")[1]
+                cell_row = sh.TopLeftCell.Address.split("$")[2]
+                cell = (int(cell_row), int(column_index_from_string(cell_col)))
+                # print('cell: ' , sh.TopLeftCell.ColumnWidth)
+                shape_top = sh.top
+                shape_height = sh.height
+                shape_left = sh.left
+                shape_width = sh.width
+                hor_flip = sh.HorizontalFlip
+                ver_flip = sh.VerticalFlip
+                line_pos = find_point_positions(hor_flip, ver_flip, shape_top, shape_top - shape_height, shape_left,
+                                                shape_left + shape_width)
+                #print('line details: ', line_name, line_pos)
+                angle = gis.compass_angle(line_pos[0], line_pos[1], excel_cell_format=True)
+                angle_round = int(gis.custom_round(angle, base=45))
                 direction_dict = gis.get_direction_dict()
                 direction = direction_dict[angle_round]
+                movement, approach = find_turn_movement(ws, cell, arrow_direction=direction, arrow_points=line_pos, text_dict=text_box_dict)
+
                 movement_dict[str(movement)] = f"{approach}_{direction}"
     return movement_dict
 
@@ -568,7 +585,16 @@ def variable_is_number(no):
 def check_text_boxes_for_movement():
     print('check_text_boxes')
 
-def find_turn_movement(worksheet, cell):
+
+def approach_from_text_box_position(from_point, to_point):
+    angle = gis.compass_angle(from_point, to_point, excel_cell_format=True)
+    angle_round = int(gis.custom_round(angle, base=45))
+    direction_dict = gis.get_direction_dict()
+    direction = direction_dict[angle_round]
+    return direction
+
+
+def find_turn_movement(worksheet, cell, arrow_direction=None, arrow_points=None, text_dict=None):
     """
     Finds the turn movement number and approach for a turn arrow object within an intersection turning survey
     Parameters
@@ -605,7 +631,35 @@ def find_turn_movement(worksheet, cell):
     elif variable_is_number(w_movement):
         movement = int(w_movement)
         approach = 'W'
-    #if movement is None:
+    if movement is None:
+        if arrow_points is not None and text_dict is not None:
+            rows = [arrow_points[0][0], arrow_points[1][0]]
+            cols = [arrow_points[0][1], arrow_points[1][1]]
+            #print('arrow_direction:', arrow_direction)
+            if arrow_direction == 'N':
+                if rows[0] > rows[1]:
+                    start_point = arrow_points[0]
+                else:
+                    start_point = arrow_points[1]
+            elif arrow_direction == 'S':
+                if rows[0] > rows[1]:
+                    start_point = arrow_points[1]
+                else:
+                    start_point = arrow_points[0]
+            elif arrow_direction == 'E':
+                if cols[0] < cols[1]:
+                    start_point = arrow_points[0]
+                else:
+                    start_point = arrow_points[1]
+            elif arrow_direction == 'W':
+                if cols[0] < rows[1]:
+                    start_point = arrow_points[1]
+                else:
+                    start_point = arrow_points[0]
+            nearest = find_nearest_position(text_dict, start_point)[0]
+            movement = text_dict[nearest]
+            approach = approach_from_text_box_position(start_point, nearest)
+            #print('movement: ', movement, nearest, cell, arrow_points, start_point)
     #    check_text_boxes_for_movement()
     return movement, approach
 
@@ -631,10 +685,10 @@ def find_point_positions(hor, ver, top, bottom, left, right):
     point_3 = (bottom, left)
     point_4 = (bottom, right)
     hor_vert_str = f"{hor}_{ver}"
-    point_dict = {'0_0': [point_1, point_4, 'E_S'],
-                  '0_-1': [point_3, point_2, 'N'],
-                  '-1_0': [point_2, point_3, 'W'],
-                  '-1_-1': [point_4, point_1, 'S']}
+    point_dict = {'0_0': [point_1, point_4],
+                  '0_-1': [point_3, point_2],
+                  '-1_0': [point_2, point_3],
+                  '-1_-1': [point_4, point_1]}
     line_pos = point_dict[hor_vert_str]
     return line_pos
 
