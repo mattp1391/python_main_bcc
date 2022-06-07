@@ -217,6 +217,9 @@ def find_count_data_rows(excel_file_path, sheet_name, ws, row_from, header_strin
                     data_df.columns = data_df.columns.map(lambda x: '|'.join([str(i) for i in x]))
                     # display(1, data_df)
                     data_df = data_df.reset_index(drop=True)
+                    #display(data_df.columns[0])
+                    if data_df.columns[0].lower() == 'time|(1/4 hr end)':
+                        data_df = data_df.rename(columns={data_df.columns[0]: 'TIME|(1/4 hr end)'})
                     df_melt = data_df.melt(id_vars=['TIME|(1/4 hr end)'], var_name='spreadsheet_movement|vehicle',
                                            value_name='count')
                     # display(2, df_melt)
@@ -340,18 +343,83 @@ def convert_spreadsheet_to_dataframe(excel_file_path, ws, sheet_name=0, search_s
         row_no = row_details[-1]
 '''
 
+def find_col_widths(ws, start_range=1, end_range=31):
+    col_positions=[]
+    current_width=0
+    for col in range(start_range, end_range):
+        cell_width = ws.cells(1, col).Width
+        col_positions.append(current_width)
+        current_width += cell_width
+    return col_positions
+
+'''
+def find_nearest_cell():
+    >> > from scipy import spatial
+    >> > airports = [(10, 10), (20, 20), (30, 30), (40, 40)]
+    >> > tree = spatial.KDTree(airports)
+    >> > tree.query([(21, 21)])
+    (array([1.41421356]), array([1]))
+'''
+
+def find_row_positions(ws, start_range=1, end_range=31):
+    row_positions=[]
+    row_hieght=0
+    for row in range(start_range, end_range):
+        cell_height = ws.cells(row, 1).Height
+        row_positions.append(row_hieght)
+        row_hieght += cell_height
+    return row_positions
+
+
+def find_cell_from_positions(row_pos, cell_pos, row_positions, col_positions):
+    print('dod')
+
+
+def find_nearest(list_, value):
+    #print(array)
+    array = np.asarray(list_)
+    #print(2, array, value)
+    if array.max() < value:
+        cell_location = None
+    else:
+        min_value_greater = array[array > value].min()
+        cell_location = list_.index(min_value_greater)
+    return cell_location
 
 def create_movement_dict(ws):
     movement_dict = {}
     shapes = ws.shapes
+    '''
+    text_box_dict = {}
+    col_positions = find_col_widths(ws, start_range=1, end_range=31)
+    #print(col_positions)
+    row_positions = find_row_positions(ws, start_range=1, end_range=31)
+    #print(row_positions)
+    for sh in shapes:
+        if shape_type_dict[sh.Type] == 'msoTextBox':
+            shape_top = sh.top
+            shape_left = sh.left
+            #print('text box: ', sh.Name, sh.TopLeftCell.Address, sh.BottomRightCell.Address)
+            pos_row = find_nearest(row_positions, shape_top)
+            pos_col = find_nearest(col_positions, shape_left)
+            text_box_value = str(ws.TextBoxes(sh.Name).Text)
+            print('position: ', pos_row, pos_col, text_box_value, text_box_value.replace('.', '', 1).isdigit())
+            #print(shape_left)
+            if pos_row is not None and pos_col is not None and text_box_value.replace('.', '', 1).isdigit():
+                text_box_dict[(pos_row, pos_col)] = text_box_value
+    display(text_box_dict)
+    '''
     for sh in shapes:
         if shape_type_dict[sh.Type] == 'msoLine':
             line_name = sh.Name
             start_style = sh.Line.BeginArrowheadStyle
             end_style = sh.Line.EndArrowheadStyle
+            begin_style = sh.Line.BeginArrowheadStyle
+            #print('begin_style', begin_style)
             cell_col = sh.TopLeftCell.Address.split("$")[1]
             cell_row = sh.TopLeftCell.Address.split("$")[2]
             cell = (int(cell_row), int(column_index_from_string(cell_col)))
+            #print('cell: ' , sh.TopLeftCell.ColumnWidth)
             shape_top = sh.top
             shape_height = sh.height
             shape_left = sh.left
@@ -362,7 +430,8 @@ def create_movement_dict(ws):
                                             shape_left + shape_width)
             angle = gis.compass_angle(line_pos[0], line_pos[1], excel_cell_format=True)
             angle_round = int(gis.custom_round(angle, base=45))
-            if arrow_head_style[end_style] == 'msoArrowheadTriangle':
+            if (arrow_head_style[end_style] == 'msoArrowheadTriangle' and
+                    arrow_head_style[begin_style] == 'msoArrowheadNone'):
                 movement, approach = find_turn_movement(ws, cell)
                 direction_dict = gis.get_direction_dict()
                 direction = direction_dict[angle_round]
@@ -403,16 +472,18 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
     df_melt['weather'] = survey_info_dict['survey_weather']
     df_melt = df_melt.rename(columns={'TIME|(1/4 hr end)': 'survey_time'})
     wb.Close(True)
-    coords = gis.geocode_coordinates(survey_info_dict['survey_site'], user_agent='Engineering_Services_BCC', api='here')
-    df_melt['intersection_lat'] = coords[0]
-    df_melt['intersection_lon'] = coords[1]
+    lat, lon, location = gis.geocode_coordinates(survey_info_dict['survey_site'], user_agent='Engineering_Services_BCC', api='here')
+    if location is not None:
+        location = location[0]
+    df_melt['intersection_lat'] = lat
+    df_melt['intersection_lon'] = lon
+    #df_melt['geolocated_location'] = location
     df_melt['file_name'] = excel_file_path
     counts_gdf = gpd.GeoDataFrame(df_melt,
                                   geometry=gpd.points_from_xy(df_melt.intersection_lon, df_melt.intersection_lat),
                                   crs='epsg:4326')
-
     # df = pd.DataFrame.from_dict([movement_dict])
-    return counts_gdf, movement_dict, intersection
+    return counts_gdf, movement_dict, intersection, location, lat, lon
 
 
 def get_ttm_1_survey_data(ws):
@@ -440,23 +511,26 @@ def get_survey_data_main(excel_file_path):
     df = None
     movement_dict = None
     intersection = None
+    location = None
+    lat = None
+    lon = None
     if not excel_file_path.endswith('.xls'):
         survey_sheet_info = find_survey_type(excel_file_path)
         survey_format = survey_sheet_info['survey_format']
         if survey_format is not None:
-            df, movement_dict, intersection = survey_functions_map[survey_format](excel_file_path,
+            df, movement_dict, intersection, location, lat, lon = survey_functions_map[survey_format](excel_file_path,
                                                                                   sheet_name=survey_sheet_info[
                                                                                       'sheet_name'])
             if movement_dict is not None:
                 if 'None' in movement_dict:
                     # ToDo: update movement dict for text boxes??
-                    df = None
+                    # df = None
                     movement_dict = None
         else:
             df = None
             movement_dict = None
 
-    return df, movement_dict, intersection
+    return df, movement_dict, intersection, location, lat, lon
 
 
 def find_survey_type(excel_file_path):
@@ -467,7 +541,7 @@ def find_survey_type(excel_file_path):
     if sheets == ['TABLE', 'excel_file_path']:
         survey_format = 'austraffic_1'
     elif wb[sheets[0]]["A1"].value is not None:
-        if wb[sheets[0]]["A1"].value.lower() == 'austraffic video intersection count':
+        if str(wb[sheets[0]]["A1"].value).lower() == 'austraffic video intersection count':
             survey_format = 'austraffic_1'
     sheet_name = sheets[0]
     survey_sheet_info = {'sheet_name': sheet_name,
@@ -490,6 +564,9 @@ def variable_is_number(no):
     """
     return isinstance(no, numbers.Number)
 
+
+def check_text_boxes_for_movement():
+    print('check_text_boxes')
 
 def find_turn_movement(worksheet, cell):
     """
@@ -528,7 +605,8 @@ def find_turn_movement(worksheet, cell):
     elif variable_is_number(w_movement):
         movement = int(w_movement)
         approach = 'W'
-
+    #if movement is None:
+    #    check_text_boxes_for_movement()
     return movement, approach
 
 

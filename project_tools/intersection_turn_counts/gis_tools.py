@@ -329,7 +329,10 @@ def find_node_distance_from_intersection(nodes_gdf, lat=None, lon=None, survey_d
 def get_intersection_node(df):
     #display(df.head(), 2)
     #display(df[df['join_distance'] == df['join_distance'].min()]['NodeId'])
-    closest_node_from_df = df[df['join_distance'] == df['join_distance'].min()]['NodeId'].iloc[0]
+    if df.empty:
+        closest_node_from_df = None
+    else:
+        closest_node_from_df = df[df['join_distance'] == df['join_distance'].min()]['NodeId'].iloc[0]
     return closest_node_from_df
 
 
@@ -423,68 +426,6 @@ def filter_direction(gdf, direction_col, direction):
     movement_gdf = gdf[(gdf[direction_col] == direction)]
     return movement_gdf
 
-
-def find_ijk_SS(sections_gdf, nodes_gdf, survey_gdf, movement_dict=None):
-    int_node = get_intersection_node(nodes_gdf)
-    from_gdf = sections_gdf[(sections_gdf['b_node_id'] == int_node)]
-    to_gdf = sections_gdf[(sections_gdf['a_node_id'] == int_node)]
-    # display('sections_gdf', sections_gdf, sections_gdf.info())
-    # display('from_gdf', from_gdf)
-    # display('to_gdf', to_gdf)
-    # display('int_node', int_node, type(int_node))
-
-    add_to_database = 1  # value of zero will add to the log of unknowns.
-    approach_to_direction = {'N': 'S', 'NE': 'SW', 'E': 'W', 'SE': 'NW', 'S': 'N', 'SW': 'NE', 'W': 'E', 'NW': 'SE'}
-    i = None
-    j = None
-    k = None
-    movement_ijk_dict = {}
-    # display('movement_ijk_dict', movement_ijk_dict)
-    for excel_key, movement in movement_dict.items():
-
-        approaches = movement.split('_')
-        # display('movement', movement)
-        from_8_approach = filter_direction(from_gdf, 'direction_8', approach_to_direction[approaches[0]])
-        to_8_approach = filter_direction(to_gdf, 'direction_8', approaches[1])
-        # display(approaches[0])
-        # display('from', from_8_approach)
-        # display(approaches[1])
-        # display('to', to_8_approach)
-        if len(from_8_approach) == 1 and len(to_8_approach) == 1:
-
-            i = str(from_8_approach['a_node_id'].iloc[0])
-            j = str(int_node)
-            k = str(to_8_approach['b_node_id'].iloc[0])
-            movement_ijk_dict[excel_key] = f'{i}_{j}_{k}'
-            survey_gdf['movement']
-        else:
-            from_4_approach = filter_direction(from_gdf, 'direction_4', approach_to_direction[approaches[0]])
-            to_4_approach = filter_direction(to_gdf, 'direction_4', approaches[1])
-            if len(from_4_approach) == 1 and len(to_4_approach) == 1:
-                i = from_4_approach['a_node_id'].iloc[0]
-                j = int_node
-                k = to_4_approach['b_node_id'].iloc[0]
-                movement_ijk_dict[excel_key] = f'{i}_{j}_{k}'
-
-                angle = float(from_4_approach['angle'].iloc[0])
-                angle_90 = float(from_4_approach['angle_round_90'].iloc[0])
-                angle_from_dif = min(abs(angle_90 - angle), abs(angle_90 - angle + 360), abs(angle_90 - angle - 360))
-                angle_to = float(from_4_approach['angle'].iloc[0])
-                angle_to_90 = float(from_4_approach['angle_round_90'].iloc[0])
-                angle_to_dif = min(abs(angle_to_90 - angle_to), abs(angle_to_90 - angle_to + 360),
-                                   abs(angle_to_90 - angle_to - 360))
-                if angle_to_dif >= 30 and angle_from_dif >= 30:
-                    add_to_database = 2  # 2 result in displaying
-            else:
-                # display('from_4_approach', from_4_approach)
-                # display('to_4_approach', to_4_approach)
-                # display(movement_dict, excel_key, movement, approach_to_direction[approaches[0]], approaches[1])
-                add_to_database = 0
-                return add_to_database, movement_ijk_dict
-
-    return add_to_database, movement_ijk_dict
-
-
 def find_geometry_of_link_node(df, node_col, nodes_gdf):
     df = df[[node_col]]
     df['lon'] = df.apply(lambda x: x[node_col][0], axis=1)
@@ -562,6 +503,8 @@ def find_node_start_and_end(network_links_gdf, nodes_gdf, start_node_col='a_node
 
 def find_ijk(sections_gdf, nodes_gdf, survey_gdf, movement_dict=None):
     int_node = get_intersection_node(nodes_gdf)
+
+
     from_gdf = sections_gdf[(sections_gdf['b_node_id'] == int_node)]
     to_gdf = sections_gdf[(sections_gdf['a_node_id'] == int_node)]
 
@@ -577,57 +520,66 @@ def find_ijk(sections_gdf, nodes_gdf, survey_gdf, movement_dict=None):
     angles_from = []
     angles_to = []
     for excel_key, movement in movement_dict.items():
-        approaches = movement.split('_')
-        from_8_approach_df = filter_direction(from_gdf, 'direction_8', approach_to_direction[approaches[0]])
-        to_8_approach_df = filter_direction(to_gdf, 'direction_8', approaches[1])
-        if len(from_8_approach_df) == 1 and len(to_8_approach_df) == 1:
+        if int_node is not None:
+            approaches = movement.split('_')
+            from_8_approach_df = filter_direction(from_gdf, 'direction_8', approach_to_direction[approaches[0]])
+            to_8_approach_df = filter_direction(to_gdf, 'direction_8', approaches[1])
+            if len(from_8_approach_df) == 1 and len(to_8_approach_df) == 1:
 
-            i.append(str(from_8_approach_df['a_node_id'].iloc[0]))
-            j.append(str(int_node))
-            k.append(str(to_8_approach_df['b_node_id'].iloc[0]))
-            add_to_database.append(1)
-            from_approach = approach_to_direction[from_8_approach_df['direction_8'].iloc[0]]
-            to_approach = to_8_approach_df['direction_8'].iloc[0]
-            from_angle = float(from_8_approach_df['angle'].iloc[0])
-            to_angle = float(to_8_approach_df['angle'].iloc[0])
-            angles_from.append(round(from_angle,2))
-            angles_to.append(round(to_angle,2))
-            direction_movements.append(f"{from_approach}_{to_approach}")
-            #movement_ijk_dict[excel_key] = f'{i}_{j}_{k}'
-        else:
-            from_4_approach_df = filter_direction(from_gdf, 'direction_4', approach_to_direction[approaches[0]])
-            to_4_approach_df = filter_direction(to_gdf, 'direction_4', approaches[1])
-            if len(from_4_approach_df) == 1 and len(to_4_approach_df) == 1:
-                i.append(str(from_4_approach_df['a_node_id'].iloc[0]))
+                i.append(str(from_8_approach_df['a_node_id'].iloc[0]))
                 j.append(str(int_node))
-                k.append(str(to_4_approach_df['b_node_id'].iloc[0]))
-                from_approach = approach_to_direction[from_4_approach_df['direction_8'].iloc[0]]
-                to_approach = to_4_approach_df['direction_8'].iloc[0]
+                k.append(str(to_8_approach_df['b_node_id'].iloc[0]))
+                add_to_database.append(1)
+                from_approach = approach_to_direction[from_8_approach_df['direction_8'].iloc[0]]
+                to_approach = to_8_approach_df['direction_8'].iloc[0]
+                from_angle = float(from_8_approach_df['angle'].iloc[0])
+                to_angle = float(to_8_approach_df['angle'].iloc[0])
+                angles_from.append(round(from_angle,2))
+                angles_to.append(round(to_angle,2))
                 direction_movements.append(f"{from_approach}_{to_approach}")
-                from_angle = float(from_4_approach_df['angle'].iloc[0])
-                angle_90 = float(from_4_approach_df['angle_round_90'].iloc[0])
-                angle_from_dif = min(abs(angle_90 - from_angle), abs(angle_90 - from_angle + 360), abs(angle_90 - from_angle - 360))
-                #print(f"{from_approach}_{to_approach}")
-                #print('from_angle', from_angle, angle_90, angle_from_dif)
-                to_angle = float(to_4_approach_df['angle'].iloc[0])
-                angle_to_90 = float(to_4_approach_df['angle_round_90'].iloc[0])
-                angle_to_dif = min(abs(angle_to_90 - to_angle), abs(angle_to_90 - to_angle + 360),
-                                   abs(angle_to_90 - to_angle - 360))
-                #print('to_angle', to_angle, angle_to_90, angle_to_dif)
-                angles_from.append(round(from_angle, 2))
-                angles_to.append(round(to_angle, 2))
-                if angle_to_dif <= 35 and angle_from_dif <= 35:
-                    add_to_database.append(1.1)  # all approaches within 70 degrees of assumed direction.'
-                else:
-                    add_to_database.append(1.2)
+                #movement_ijk_dict[excel_key] = f'{i}_{j}_{k}'
             else:
-                add_to_database.append(0.2)  # not a 1 is to 1 relationship found.
-                i.append(None)
-                j.append(None)
-                k.append(None)
-                angles_from.append(None)
-                angles_to.append(None)
-                direction_movements.append(None)
+                from_4_approach_df = filter_direction(from_gdf, 'direction_4', approach_to_direction[approaches[0]])
+                to_4_approach_df = filter_direction(to_gdf, 'direction_4', approaches[1])
+                if len(from_4_approach_df) == 1 and len(to_4_approach_df) == 1:
+                    i.append(str(from_4_approach_df['a_node_id'].iloc[0]))
+                    j.append(str(int_node))
+                    k.append(str(to_4_approach_df['b_node_id'].iloc[0]))
+                    from_approach = approach_to_direction[from_4_approach_df['direction_8'].iloc[0]]
+                    to_approach = to_4_approach_df['direction_8'].iloc[0]
+                    direction_movements.append(f"{from_approach}_{to_approach}")
+                    from_angle = float(from_4_approach_df['angle'].iloc[0])
+                    angle_90 = float(from_4_approach_df['angle_round_90'].iloc[0])
+                    angle_from_dif = min(abs(angle_90 - from_angle), abs(angle_90 - from_angle + 360), abs(angle_90 - from_angle - 360))
+                    #print(f"{from_approach}_{to_approach}")
+                    #print('from_angle', from_angle, angle_90, angle_from_dif)
+                    to_angle = float(to_4_approach_df['angle'].iloc[0])
+                    angle_to_90 = float(to_4_approach_df['angle_round_90'].iloc[0])
+                    angle_to_dif = min(abs(angle_to_90 - to_angle), abs(angle_to_90 - to_angle + 360),
+                                       abs(angle_to_90 - to_angle - 360))
+                    #print('to_angle', to_angle, angle_to_90, angle_to_dif)
+                    angles_from.append(round(from_angle, 2))
+                    angles_to.append(round(to_angle, 2))
+                    if angle_to_dif <= 35 and angle_from_dif <= 35:
+                        add_to_database.append(1.1)  # all approaches within 70 degrees of assumed direction.'
+                    else:
+                        add_to_database.append(1.2)
+                else:
+                    add_to_database.append(0.2)  # not a 1 is to 1 relationship found.
+                    i.append(None)
+                    j.append(None)
+                    k.append(None)
+                    angles_from.append(None)
+                    angles_to.append(None)
+                    direction_movements.append(None)
+        else:
+            add_to_database.append(0.3)  # not a 1 is to 1 relationship found.
+            i.append(None)
+            j.append(None)
+            k.append(None)
+            angles_from.append(None)
+            angles_to.append(None)
+            direction_movements.append(None)
         excel_keys.append(excel_key)
     movement_ijk_dict = {'excel_movement': excel_keys, 'geographic_movement': direction_movements,
                          'angle_from': angles_from, 'angle_to': angles_to, 'i': i, 'j': j, 'k': k,
