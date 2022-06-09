@@ -382,9 +382,9 @@ def find_cell_from_positions(row_pos, cell_pos, row_positions, col_positions):
 
 
 def find_nearest(list_, value):
-    #print(array)
+    if type(list_) is dict:
+        locations = list(list_.keys())
     array = np.asarray(list_)
-    #print(2, array, value)
     if array.max() < value:
         cell_location = None
     else:
@@ -407,12 +407,9 @@ def get_text_box_locations_in_dictionary(ws, shapes):
             shape_width = sh.width
             shape_pos_row = shape_top + shape_height/2
             shape_pos_col = shape_left + shape_width/2
-            #print('text box: ', sh.Name, sh.TopLeftCell.Address, sh.BottomRightCell.Address)
             pos_row = find_nearest(row_positions, shape_pos_row)
             pos_col = find_nearest(col_positions, shape_pos_col)
             text_box_value = str(ws.TextBoxes(sh.Name).Text)
-            #print('position: ', pos_row, pos_col, text_box_value, text_box_value.replace('.', '', 1).isdigit())
-            #print(shape_left)
             if pos_row is not None and pos_col is not None and text_box_value.replace('.', '', 1).isdigit():
                 text_box_dict[(shape_pos_row, shape_pos_col)] = text_box_value
     if text_box_dict == {}:
@@ -420,21 +417,32 @@ def get_text_box_locations_in_dictionary(ws, shapes):
     return text_box_dict
 
 
+def ungroup_shapes(ws, shapes):
+    for sh in shapes:
+        if shape_type_dict[sh.Type] == 'msoGroup':
+            sh.ungroup()
+    shapes_2 = ws.Shapes
+    return shapes_2
+
 def create_movement_dict(ws):
     movement_dict = {}
-    shapes = ws.shapes
+    shapes_1 = ws.shapes
+    shapes = ungroup_shapes(ws, shapes_1)
     text_box_dict = get_text_box_locations_in_dictionary(ws, shapes)
-    display(text_box_dict)
+    #display(text_box_dict)
+
+    #shapes = ws.shapes
     for sh in shapes:
         if shape_type_dict[sh.Type] == 'msoLine':
             line_name = sh.Name
             end_style = sh.Line.EndArrowheadStyle
             begin_style = sh.Line.BeginArrowheadStyle
+            cell_col = sh.TopLeftCell.Address.split("$")[1]
+            cell_row = sh.TopLeftCell.Address.split("$")[2]
             if (arrow_head_style[end_style] == 'msoArrowheadTriangle' and
-                    arrow_head_style[begin_style] == 'msoArrowheadNone'):
+                    arrow_head_style[begin_style] == 'msoArrowheadNone') and int(cell_row) <= 31:
                 # print('begin_style', begin_style)
-                cell_col = sh.TopLeftCell.Address.split("$")[1]
-                cell_row = sh.TopLeftCell.Address.split("$")[2]
+
                 cell = (int(cell_row), int(column_index_from_string(cell_col)))
                 # print('cell: ' , sh.TopLeftCell.ColumnWidth)
                 shape_top = sh.top
@@ -443,10 +451,12 @@ def create_movement_dict(ws):
                 shape_width = sh.width
                 hor_flip = sh.HorizontalFlip
                 ver_flip = sh.VerticalFlip
-                line_pos = find_point_positions(hor_flip, ver_flip, shape_top, shape_top - shape_height, shape_left,
+                line_pos = find_point_positions(hor_flip, ver_flip, shape_top, shape_top + shape_height, shape_left,
                                                 shape_left + shape_width)
                 #print('line details: ', line_name, line_pos)
-                angle = gis.compass_angle(line_pos[0], line_pos[1], excel_cell_format=True)
+                point_1_for_angle_calc = ((-line_pos[0][0], line_pos[0][1])) #flip vertical to get positive distance in north direction
+                point_2_for_angle_calc = ((-line_pos[1][0], line_pos[1][1]))
+                angle = gis.compass_angle(point_1_for_angle_calc, point_2_for_angle_calc, excel_cell_format=True)
                 angle_round = int(gis.custom_round(angle, base=45))
                 direction_dict = gis.get_direction_dict()
                 direction = direction_dict[angle_round]
@@ -470,6 +480,8 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
     DataFrame: {movement_1: Origin_Destination, movement_2, origin_destination}
     """
     xl = Dispatch('Excel.Application')
+    xl.Interactive = False
+    xl.Visible = False
     wb = xl.Workbooks.Open(Filename=excel_file_path)
     ws = wb.Worksheets(sheet_name)
     movement_dict = create_movement_dict(ws)
@@ -489,6 +501,8 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
     df_melt['weather'] = survey_info_dict['survey_weather']
     df_melt = df_melt.rename(columns={'TIME|(1/4 hr end)': 'survey_time'})
     wb.Close(True)
+    xl.Interactive = True
+    xl.Visible = True
     lat, lon, location = gis.geocode_coordinates(survey_info_dict['survey_site'], user_agent='Engineering_Services_BCC', api='here')
     if location is not None:
         location = location[0]
@@ -523,7 +537,16 @@ survey_functions_map = {"austraffic_1": get_austraffic_1_survey_data, "ttm_1": g
                         " data_audit_systems_1": get_data_audit_systems_1_survey_data}
 
 
-def get_survey_data_main(excel_file_path):
+def get_sheets_in_workbook(file_path):
+    if not file_path.endswith('.xls'):
+        wb = load_workbook(filename=file_path)
+        sheets = wb.sheetnames
+    else:
+        sheets = None
+    return sheets
+
+
+def get_survey_data_main(excel_file_path, sheet):
     # ToDo: add capability for .xls files
     df = None
     movement_dict = None
@@ -532,12 +555,10 @@ def get_survey_data_main(excel_file_path):
     lat = None
     lon = None
     if not excel_file_path.endswith('.xls'):
-        survey_sheet_info = find_survey_type(excel_file_path)
-        survey_format = survey_sheet_info['survey_format']
+        survey_format = find_survey_type(excel_file_path, sheet)
         if survey_format is not None:
             df, movement_dict, intersection, location, lat, lon = survey_functions_map[survey_format](excel_file_path,
-                                                                                  sheet_name=survey_sheet_info[
-                                                                                      'sheet_name'])
+                                                                                                      sheet_name=sheet)
             if movement_dict is not None:
                 if 'None' in movement_dict:
                     # ToDo: update movement dict for text boxes??
@@ -550,21 +571,24 @@ def get_survey_data_main(excel_file_path):
     return df, movement_dict, intersection, location, lat, lon
 
 
-def find_survey_type(excel_file_path):
+def find_survey_type(excel_file_path, sheet):
     wb = load_workbook(filename=excel_file_path)
     sheets = wb.sheetnames
     survey_format = None
     # ws.get_squared_range(min_col=1, min_row=1, max_col=1, max_row=10)
+    #print(wb[sheet].chartsheet)
     if sheets == ['TABLE', 'excel_file_path']:
         survey_format = 'austraffic_1'
-    elif wb[sheets[0]]["A1"].value is not None:
-        if str(wb[sheets[0]]["A1"].value).lower() == 'austraffic video intersection count':
-            survey_format = 'austraffic_1'
-    sheet_name = sheets[0]
-    survey_sheet_info = {'sheet_name': sheet_name,
-                         'survey_format': survey_format}
+    else:
+        try:
+            if wb[sheet]["A1"].value is not None:
+                if str(wb[sheet]["A1"].value).lower() == 'austraffic video intersection count':
+                    survey_format = 'austraffic_1'
+        except:
+            #ToDo: update this.  this was a quick fix for chart sheet error
+            print(f'update this.  This was a quick fix for chart sheet error for sheet {sheet}.')
     wb.close()
-    return survey_sheet_info
+    return survey_format
 
 
 def variable_is_number(no):
@@ -593,6 +617,18 @@ def approach_from_text_box_position(from_point, to_point):
     direction = direction_dict[angle_round]
     return direction
 
+
+def use_bearing_to_determine_best_match_from_2_nearest_points(point_1, point_2, start_point):
+    angle_point_1 = gis.compass_angle(start_point, point_1)
+    angle_point_1_round = int(gis.custom_round(angle_point_1, base=90))
+    angle_point_2 = gis.compass_angle(start_point, point_2)
+    angle_point_2_round = int(gis.custom_round(angle_point_2, base=90))
+    angle_dif_point_1 = min(abs(angle_point_1 - angle_point_1_round), abs(angle_point_1 - angle_point_1_round + 360))
+    angle_dif_point_2 = min(abs(angle_point_2 - angle_point_2_round), abs(angle_point_2 - angle_point_2_round + 360))
+    if angle_dif_point_1 <= angle_dif_point_2:
+        return point_1
+    else:
+        return point_2
 
 def find_turn_movement(worksheet, cell, arrow_direction=None, arrow_points=None, text_dict=None):
     """
@@ -656,9 +692,20 @@ def find_turn_movement(worksheet, cell, arrow_direction=None, arrow_points=None,
                     start_point = arrow_points[1]
                 else:
                     start_point = arrow_points[0]
-            nearest = find_nearest_position(text_dict, start_point)[0]
-            movement = text_dict[nearest]
-            approach = approach_from_text_box_position(start_point, nearest)
+            else:
+                start_point = arrow_points[0] # this will be used for ne, se, sw or nw arrows
+            #print(start_point, text_dict)
+            text_positions = list(text_dict.keys())
+            nearest = find_nearest_position(text_positions, start_point)[0]
+            text_dict_2 = text_dict.copy()
+            del text_dict_2[nearest]
+            text_positions_2 = list(text_dict_2.keys())
+            second_nearest = find_nearest_position(text_positions_2, start_point)[0]
+            point_match = use_bearing_to_determine_best_match_from_2_nearest_points(nearest, second_nearest, start_point)
+            movement = text_dict[point_match]
+            point_1_for_angle_calc = (-start_point[0], start_point[1])  # flip vertical to get positive distance in north direction
+            point_2_for_angle_calc = (-point_match[0], point_match[1])
+            approach = approach_from_text_box_position(point_1_for_angle_calc, point_2_for_angle_calc)
             #print('movement: ', movement, nearest, cell, arrow_points, start_point)
     #    check_text_boxes_for_movement()
     return movement, approach
