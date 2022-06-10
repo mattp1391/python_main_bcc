@@ -73,8 +73,6 @@ excel_border_checks = {'xlDiagonalDown': 5, 'xlDiagonalUp': 6, 'xlEdgeBottom': 9
                        'xlEdgeTop': 8, 'xlInsideHorizontal': 12, 'xlInsideVertical': 11}
 
 
-
-
 def ole_to_date_str(pywin_datetime):
     py_datetime = datetime(
         year=pywin_datetime.year,
@@ -189,7 +187,6 @@ def find_count_data_rows(excel_file_path, sheet_name, ws, row_from, header_strin
 
             # https://docs.microsoft.com/en-us/dotnet/api/microsoft.office.interop.excel.xllinestyle?view=excel-pia
 
-
             use_columns = find_columns_used(ws, header_row, header_end)
             # display(use_columns)
             start_col = column_index_from_string(use_columns.split(':')[0])
@@ -218,7 +215,7 @@ def find_count_data_rows(excel_file_path, sheet_name, ws, row_from, header_strin
                     data_df.columns = data_df.columns.map(lambda x: '|'.join([str(i) for i in x]))
                     # display(1, data_df)
                     data_df = data_df.reset_index(drop=True)
-                    #display(data_df.columns[0])
+                    # display(data_df.columns[0])
                     if data_df.columns[0].lower() == 'time|(1/4 hr end)':
                         data_df = data_df.rename(columns={data_df.columns[0]: 'TIME|(1/4 hr end)'})
                     df_melt = data_df.melt(id_vars=['TIME|(1/4 hr end)'], var_name='spreadsheet_movement|vehicle',
@@ -344,9 +341,10 @@ def convert_spreadsheet_to_dataframe(excel_file_path, ws, sheet_name=0, search_s
         row_no = row_details[-1]
 '''
 
+
 def find_col_widths(ws, start_range=1, end_range=31):
-    col_positions=[]
-    current_width=0
+    col_positions = []
+    current_width = 0
     for col in range(start_range, end_range):
         cell_width = ws.cells(1, col).Width
         col_positions.append(current_width)
@@ -367,10 +365,9 @@ def find_nearest_position(locations, position):
     return closest_point, closest_distance
 
 
-
 def find_row_positions(ws, start_range=1, end_range=31):
-    row_positions=[]
-    row_hieght=0
+    row_positions = []
+    row_hieght = 0
     for row in range(start_range, end_range):
         cell_height = ws.cells(row, 1).Height
         row_positions.append(row_hieght)
@@ -397,17 +394,17 @@ def find_nearest(list_, value):
 def get_text_box_locations_in_dictionary(ws, shapes):
     text_box_dict = {}
     col_positions = find_col_widths(ws, start_range=1, end_range=31)
-    #print(col_positions)
+    # print(col_positions)
     row_positions = find_row_positions(ws, start_range=1, end_range=31)
-    #print(row_positions)
+    # print(row_positions)
     for sh in shapes:
         if shape_type_dict[sh.Type] == 'msoTextBox':
             shape_top = sh.top
             shape_height = sh.height
             shape_left = sh.left
             shape_width = sh.width
-            shape_pos_row = shape_top + shape_height/2
-            shape_pos_col = shape_left + shape_width/2
+            shape_pos_row = shape_top + shape_height / 2
+            shape_pos_col = shape_left + shape_width / 2
             pos_row = find_nearest(row_positions, shape_pos_row)
             pos_col = find_nearest(col_positions, shape_pos_col)
             text_box_value = str(ws.TextBoxes(sh.Name).Text)
@@ -425,14 +422,15 @@ def ungroup_shapes(ws, shapes):
     shapes_2 = ws.Shapes
     return shapes_2
 
+
 def create_movement_dict(ws):
     movement_dict = {}
     shapes_1 = ws.shapes
     shapes = ungroup_shapes(ws, shapes_1)
     text_box_dict = get_text_box_locations_in_dictionary(ws, shapes)
-    #display(text_box_dict)
+    # display(text_box_dict)
 
-    #shapes = ws.shapes
+    # shapes = ws.shapes
     for sh in shapes:
         if shape_type_dict[sh.Type] == 'msoLine':
             line_name = sh.Name
@@ -441,7 +439,7 @@ def create_movement_dict(ws):
             cell_col = sh.TopLeftCell.Address.split("$")[1]
             cell_row = sh.TopLeftCell.Address.split("$")[2]
             if (arrow_head_style[end_style] == 'msoArrowheadTriangle' and
-                    arrow_head_style[begin_style] == 'msoArrowheadNone') and int(cell_row) <= 31:
+                arrow_head_style[begin_style] == 'msoArrowheadNone') and int(cell_row) <= 31:
                 # print('begin_style', begin_style)
 
                 cell = (int(cell_row), int(column_index_from_string(cell_col)))
@@ -454,14 +452,16 @@ def create_movement_dict(ws):
                 ver_flip = sh.VerticalFlip
                 line_pos = find_point_positions(hor_flip, ver_flip, shape_top, shape_top + shape_height, shape_left,
                                                 shape_left + shape_width)
-                #print('line details: ', line_name, line_pos)
-                point_1_for_angle_calc = ((-line_pos[0][0], line_pos[0][1])) #flip vertical to get positive distance in north direction
+                # print('line details: ', line_name, line_pos)
+                point_1_for_angle_calc = (
+                    (-line_pos[0][0], line_pos[0][1]))  # flip vertical to get positive distance in north direction
                 point_2_for_angle_calc = ((-line_pos[1][0], line_pos[1][1]))
                 angle = gis.compass_angle(point_1_for_angle_calc, point_2_for_angle_calc, excel_cell_format=True)
                 angle_round = int(gis.custom_round(angle, base=45))
                 direction_dict = gis.get_direction_dict()
                 direction = direction_dict[angle_round]
-                movement, approach = find_turn_movement(ws, cell, arrow_direction=direction, arrow_points=line_pos, text_dict=text_box_dict)
+                movement, approach = find_turn_movement(ws, cell, arrow_direction=direction, arrow_points=line_pos,
+                                                        text_dict=text_box_dict)
 
                 movement_dict[str(movement)] = f"{approach}_{direction}"
     return movement_dict
@@ -504,12 +504,13 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
     wb.Close(True)
     xl.Interactive = True
     xl.Visible = True
-    lat, lon, location = gis.geocode_coordinates(survey_info_dict['survey_site'], user_agent='Engineering_Services_BCC', api='here')
+    lat, lon, location = gis.geocode_coordinates(survey_info_dict['survey_site'], user_agent='Engineering_Services_BCC',
+                                                 api='here')
     if location is not None:
         location = location[0]
     df_melt['intersection_lat'] = lat
     df_melt['intersection_lon'] = lon
-    #df_melt['geolocated_location'] = location
+    # df_melt['geolocated_location'] = location
     df_melt['file_name'] = excel_file_path
     counts_gdf = gpd.GeoDataFrame(df_melt,
                                   geometry=gpd.points_from_xy(df_melt.intersection_lon, df_melt.intersection_lat),
@@ -577,7 +578,7 @@ def find_survey_type(excel_file_path, sheet):
     sheets = wb.sheetnames
     survey_format = None
     # ws.get_squared_range(min_col=1, min_row=1, max_col=1, max_row=10)
-    #print(wb[sheet].chartsheet)
+    # print(wb[sheet].chartsheet)
     if sheets == ['TABLE', 'excel_file_path']:
         survey_format = 'austraffic_1'
     else:
@@ -586,7 +587,7 @@ def find_survey_type(excel_file_path, sheet):
                 if str(wb[sheet]["A1"].value).lower() == 'austraffic video intersection count':
                     survey_format = 'austraffic_1'
         except:
-            #ToDo: update this.  this was a quick fix for chart sheet error
+            # ToDo: update this.  this was a quick fix for chart sheet error
             print(f'update this.  This was a quick fix for chart sheet error for sheet {sheet}.')
     wb.close()
     return survey_format
@@ -630,6 +631,7 @@ def use_bearing_to_determine_best_match_from_2_nearest_points(point_1, point_2, 
         return point_1
     else:
         return point_2
+
 
 def find_turn_movement(worksheet, cell, arrow_direction=None, arrow_points=None, text_dict=None):
     """
@@ -675,7 +677,7 @@ def find_turn_movement(worksheet, cell, arrow_direction=None, arrow_points=None,
         if arrow_points is not None and text_dict is not None:
             rows = [arrow_points[0][0], arrow_points[1][0]]
             cols = [arrow_points[0][1], arrow_points[1][1]]
-            #print('arrow_direction:', arrow_direction)
+            # print('arrow_direction:', arrow_direction)
             if arrow_direction == 'N':
                 if rows[0] > rows[1]:
                     start_point = arrow_points[0]
@@ -697,20 +699,22 @@ def find_turn_movement(worksheet, cell, arrow_direction=None, arrow_points=None,
                 else:
                     start_point = arrow_points[0]
             else:
-                start_point = arrow_points[0] # this will be used for ne, se, sw or nw arrows
-            #print(start_point, text_dict)
+                start_point = arrow_points[0]  # this will be used for ne, se, sw or nw arrows
+            # print(start_point, text_dict)
             text_positions = list(text_dict.keys())
             nearest = find_nearest_position(text_positions, start_point)[0]
             text_dict_2 = text_dict.copy()
             del text_dict_2[nearest]
             text_positions_2 = list(text_dict_2.keys())
             second_nearest = find_nearest_position(text_positions_2, start_point)[0]
-            point_match = use_bearing_to_determine_best_match_from_2_nearest_points(nearest, second_nearest, start_point)
+            point_match = use_bearing_to_determine_best_match_from_2_nearest_points(nearest, second_nearest,
+                                                                                    start_point)
             movement = text_dict[point_match]
-            point_1_for_angle_calc = (-start_point[0], start_point[1])  # flip vertical to get positive distance in north direction
+            point_1_for_angle_calc = (
+                -start_point[0], start_point[1])  # flip vertical to get positive distance in north direction
             point_2_for_angle_calc = (-point_match[0], point_match[1])
             approach = approach_from_text_box_position(point_1_for_angle_calc, point_2_for_angle_calc)
-            #print('movement: ', movement, nearest, cell, arrow_points, start_point)
+            # print('movement: ', movement, nearest, cell, arrow_points, start_point)
     #    check_text_boxes_for_movement()
     return movement, approach
 
@@ -803,26 +807,26 @@ def find_files_assessed(df):
 
 
 def analyse_intersection_counts_for_saturn(input_folder, sections_file, nodes_file, log_file_data, log_file_movements):
-    #xl = Dispatch('Excel.Application')
-    #wb = xl.Workbooks.Open(Filename=excel_file_path)
-    #wb.sheets.Names
-    #survey_sheet_info = aic.find_survey_type(excel_file_path)
-    #print('start')
-    #folder_path = r"G:\BI\TPS\Transport Engineering\MODELS\BCASM_development\TrafficCounts\Austraffic_only\17480 - Site 1. Adelaide Street & Creek Street, Brisbane City (Wednesday, 10 February 2021).xlsx"
+    # xl = Dispatch('Excel.Application')
+    # wb = xl.Workbooks.Open(Filename=excel_file_path)
+    # wb.sheets.Names
+    # survey_sheet_info = aic.find_survey_type(excel_file_path)
+    # print('start')
+    # folder_path = r"G:\BI\TPS\Transport Engineering\MODELS\BCASM_development\TrafficCounts\Austraffic_only\17480 - Site 1. Adelaide Street & Creek Street, Brisbane City (Wednesday, 10 February 2021).xlsx"
     folder_path = input_folder
     path_type = fu.check_file_path_is_folder_or_directory(folder_path)
-    print(path_type)
+    #print(path_type)
     if path_type is not None:
         if path_type == 'file':
             files = [folder_path]
         elif path_type == 'directory':
-            files = fu.get_list_of_files_in_directory(folder_path, file_type = '.xl*', sub_folders=False)
+            files = fu.get_list_of_files_in_directory(folder_path, file_type='.xl*', sub_folders=False)
         for f in tqdm(files):
-            print(f)
+            #print(f)
             sheet_names = get_sheets_in_workbook(f)
             if sheet_names is not None:
                 for sheet in sheet_names:
-                    print(sheet)
+                    #print(sheet)
                     if 'summary' not in sheet.lower():
                         movement_ijk_dict = None
                         survey_df, movement_dict, intersection, geo_location, lat, lon = get_survey_data_main(f, sheet)
@@ -831,22 +835,26 @@ def analyse_intersection_counts_for_saturn(input_folder, sections_file, nodes_fi
                             save_data_log(survey_df, log_file_data)
                         if movement_dict is not None:
                             if movement_dict == {}:
-                                movement_ijk_dict = {'excel_movement': [None], 'geographic_movement': [None], 'angle_from': [None], 'angle_to': [None], 'i': [None], 'j': [None], 'k': [None], 'log_type': [0.1]}
+                                movement_ijk_dict = {'excel_movement': [None], 'geographic_movement': [None],
+                                                     'angle_from': [None], 'angle_to': [None], 'i': [None], 'j': [None],
+                                                     'k': [None], 'log_type': [0.1]}
                             else:
                                 sections_gdf = gis.create_sections_gdf(sections_file)
                                 nodes_gdf = gis.create_nodes_gdf(nodes_file, crs='epsg:4326')
                                 sections_gdf = gis.find_node_start_and_end(sections_gdf, nodes_gdf)
-                                node_distance_gdf = gis.find_node_distance_from_intersection(nodes_gdf, survey_df=survey_df)
-                                movement_ijk_dict = gis.find_ijk(sections_gdf, node_distance_gdf, survey_df, movement_dict=movement_dict)
-
-
+                                node_distance_gdf = gis.find_node_distance_from_intersection(nodes_gdf,
+                                                                                             survey_df=survey_df)
+                                movement_ijk_dict = gis.find_ijk(sections_gdf, node_distance_gdf, survey_df,
+                                                                 movement_dict=movement_dict)
                         else:
-                            movement_ijk_dict = {'excel_movement': [None], 'geographic_movement': [None], 'angle_from': [None], 'angle_to': [None], 'i': [None], 'j': [None], 'k': [None], 'log_type': [0]}
+                            movement_ijk_dict = {'excel_movement': [None], 'geographic_movement': [None],
+                                                 'angle_from': [None], 'angle_to': [None], 'i': [None], 'j': [None],
+                                                 'k': [None], 'log_type': [0]}
                             # no data found
 
-                        #if add_to_database == 1:
-                        #output_dict =
-                        #print(intersection, movement_ijk_dict)
+                        # if add_to_database == 1:
+                        # output_dict =
+                        # print(intersection, movement_ijk_dict)
                         display(movement_log_df)
                         movement_log_df = pd.DataFrame.from_dict(movement_ijk_dict)
                         movement_log_df.loc[:, 'file_name'] = f
@@ -855,10 +863,12 @@ def analyse_intersection_counts_for_saturn(input_folder, sections_file, nodes_fi
                         movement_log_df.loc[:, 'geocode_location'] = geo_location
                         movement_log_df.loc[:, 'lat'] = lat
                         movement_log_df.loc[:, 'lon'] = lon
-                        movement_log_df = movement_log_df[['intersection', 'excel_movement', 'geographic_movement', 'geocode_location', 'lat', 'lon', 'angle_from', 'angle_to', 'i', 'j', 'k', 'log_type', 'file_name', 'sheet_name']]
+                        movement_log_df = movement_log_df[
+                            ['intersection', 'excel_movement', 'geographic_movement', 'geocode_location', 'lat', 'lon',
+                             'angle_from', 'angle_to', 'i', 'j', 'k', 'log_type', 'file_name', 'sheet_name']]
                         save_movement_log(movement_log_df, log_file_movements)
-                        #else:
-                        #clear_output(wait=True)
-                        #print(f, add_to_database)
-                        #gis.add_to_log(f, log_type=add_to_database, df=survey_df, movements=movement_ijk_dict, comments=None)
-                        #ToDo: check movements match data movements
+                        # else:
+                        # clear_output(wait=True)
+                        # print(f, add_to_database)
+                        # gis.add_to_log(f, log_type=add_to_database, df=survey_df, movements=movement_ijk_dict, comments=None)
+                        # ToDo: check movements match data movements
