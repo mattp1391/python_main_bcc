@@ -8,6 +8,7 @@ import numpy as np
 import numbers
 from datetime import datetime
 from IPython.display import display
+from tqdm import tqdm
 import sys
 import csv
 
@@ -489,7 +490,7 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
                               df_end_strings=[None, 'Peak', 'Total'])
     if df is None:
         wb.Close(True)
-        return None, None
+        return None, None, None, None, None, None
     survey_info_dict = get_survey_info(ws)
     intersection = survey_info_dict['survey_site']
     df_melt = df.drop(columns=['temp_spreadsheet_movement', 'temp_vehicle', 'spreadsheet_movement|vehicle'],
@@ -647,7 +648,10 @@ def find_turn_movement(worksheet, cell, arrow_direction=None, arrow_points=None,
     movement_found = False
     e_movement = worksheet.cells(cell[0], cell[1] + 1).value
     w_movement = worksheet.cells(cell[0], cell[1] - 1).value
-    n_movement = worksheet.cells(cell[0] - 1, cell[1]).value
+    if cell[0] > 1:
+        n_movement = worksheet.cells(cell[0] - 1, cell[1]).value
+    else:
+        n_movement = None
     if n_movement is None:
         if cell[0] > 2:
             n_movement = worksheet.cells(cell[0] - 2, cell[1]).value
@@ -796,3 +800,65 @@ def save_movement_log(df, filename):
 def find_files_assessed(df):
     files_assessed = df[df['file'].notnull()]
     return files_assessed
+
+
+def analyse_intersection_counts_for_saturn(input_folder, sections_file, nodes_file, log_file_data, log_file_movements):
+    #xl = Dispatch('Excel.Application')
+    #wb = xl.Workbooks.Open(Filename=excel_file_path)
+    #wb.sheets.Names
+    #survey_sheet_info = aic.find_survey_type(excel_file_path)
+    #print('start')
+    #folder_path = r"G:\BI\TPS\Transport Engineering\MODELS\BCASM_development\TrafficCounts\Austraffic_only\17480 - Site 1. Adelaide Street & Creek Street, Brisbane City (Wednesday, 10 February 2021).xlsx"
+    folder_path = input_folder
+    path_type = fu.check_file_path_is_folder_or_directory(folder_path)
+    print(path_type)
+    if path_type is not None:
+        if path_type == 'file':
+            files = [folder_path]
+        elif path_type == 'directory':
+            files = fu.get_list_of_files_in_directory(folder_path, file_type = '.xl*', sub_folders=False)
+        for f in tqdm(files):
+            print(f)
+            sheet_names = get_sheets_in_workbook(f)
+            if sheet_names is not None:
+                for sheet in sheet_names:
+                    print(sheet)
+                    if 'summary' not in sheet.lower():
+                        movement_ijk_dict = None
+                        survey_df, movement_dict, intersection, geo_location, lat, lon = get_survey_data_main(f, sheet)
+                        if survey_df is not None:
+                            survey_df.loc[:, 'sheet_name'] = sheet
+                            save_data_log(survey_df, log_file_data)
+                        if movement_dict is not None:
+                            if movement_dict == {}:
+                                movement_ijk_dict = {'excel_movement': [None], 'geographic_movement': [None], 'angle_from': [None], 'angle_to': [None], 'i': [None], 'j': [None], 'k': [None], 'log_type': [0.1]}
+                            else:
+                                sections_gdf = gis.create_sections_gdf(sections_file)
+                                nodes_gdf = gis.create_nodes_gdf(nodes_file, crs='epsg:4326')
+                                sections_gdf = gis.find_node_start_and_end(sections_gdf, nodes_gdf)
+                                node_distance_gdf = gis.find_node_distance_from_intersection(nodes_gdf, survey_df=survey_df)
+                                movement_ijk_dict = gis.find_ijk(sections_gdf, node_distance_gdf, survey_df, movement_dict=movement_dict)
+
+
+                        else:
+                            movement_ijk_dict = {'excel_movement': [None], 'geographic_movement': [None], 'angle_from': [None], 'angle_to': [None], 'i': [None], 'j': [None], 'k': [None], 'log_type': [0]}
+                            # no data found
+
+                        #if add_to_database == 1:
+                        #output_dict =
+                        #print(intersection, movement_ijk_dict)
+                        display(movement_log_df)
+                        movement_log_df = pd.DataFrame.from_dict(movement_ijk_dict)
+                        movement_log_df.loc[:, 'file_name'] = f
+                        movement_log_df.loc[:, 'sheet_name'] = sheet
+                        movement_log_df.loc[:, 'intersection'] = intersection
+                        movement_log_df.loc[:, 'geocode_location'] = geo_location
+                        movement_log_df.loc[:, 'lat'] = lat
+                        movement_log_df.loc[:, 'lon'] = lon
+                        movement_log_df = movement_log_df[['intersection', 'excel_movement', 'geographic_movement', 'geocode_location', 'lat', 'lon', 'angle_from', 'angle_to', 'i', 'j', 'k', 'log_type', 'file_name', 'sheet_name']]
+                        save_movement_log(movement_log_df, log_file_movements)
+                        #else:
+                        #clear_output(wait=True)
+                        #print(f, add_to_database)
+                        #gis.add_to_log(f, log_type=add_to_database, df=survey_df, movements=movement_ijk_dict, comments=None)
+                        #ToDo: check movements match data movements
