@@ -462,7 +462,28 @@ def create_movement_dict(ws):
                 direction = direction_dict[angle_round]
                 movement, approach = find_turn_movement(ws, cell, arrow_direction=direction, arrow_points=line_pos,
                                                         text_dict=text_box_dict)
-
+                # correct direction for slip turn arrows
+                if direction in ['NE', 'SE', 'SW', 'NW']:
+                    if approach == 'N':
+                        if direction == 'SE':
+                            direction = 'E'
+                        elif direction == 'SW':
+                            direction = 'W'
+                    elif approach == 'E':
+                        if direction == 'NW':
+                            direction = 'N'
+                        elif direction == 'SW':
+                            direction = 'S'
+                    elif approach == 'S':
+                        if direction == 'NE':
+                            direction = 'E'
+                        elif direction == 'NW':
+                            direction = 'W'
+                    elif approach == 'W':
+                        if direction == 'NE':
+                            direction = 'N'
+                        elif direction == 'SE':
+                            direction = 'S'
                 movement_dict[str(movement)] = f"{approach}_{direction}"
     return movement_dict
 
@@ -504,8 +525,13 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
     wb.Close(True)
     xl.Interactive = True
     xl.Visible = True
+    geo_search_text = survey_info_dict['survey_site']
+    if 'qld' not in geo_search_text.lower() or 'queensland' not in geo_search_text.lower():
+        geo_search_text += f'{geo_search_text}, QLD'
+    if 'aus' not in geo_search_text.lower() or 'australia' not in geo_search_text.lower():
+        geo_search_text += ', AUSTRALIA'
     lat, lon, location = gis.geocode_coordinates(survey_info_dict['survey_site'], user_agent='Engineering_Services_BCC',
-                                                 api='here')
+                                                 api='google')
     if location is not None:
         location = location[0]
     df_melt['intersection_lat'] = lat
@@ -540,12 +566,18 @@ survey_functions_map = {"austraffic_1": get_austraffic_1_survey_data, "ttm_1": g
 
 
 def get_sheets_in_workbook(file_path):
+
     if not file_path.endswith('.xls'):
         wb = load_workbook(filename=file_path)
-        sheets = wb.sheetnames
+        all_sheets = wb.sheetnames
+        sheets = []
+        for sheet in all_sheets:
+            if wb[sheet].sheet_state == 'visible':
+                sheets.append(sheet)
     else:
         sheets = None
     return sheets
+
 
 
 def get_survey_data_main(excel_file_path, sheet):
@@ -702,20 +734,33 @@ def find_turn_movement(worksheet, cell, arrow_direction=None, arrow_points=None,
                 start_point = arrow_points[0]  # this will be used for ne, se, sw or nw arrows
             # print(start_point, text_dict)
             text_positions = list(text_dict.keys())
-            nearest = find_nearest_position(text_positions, start_point)[0]
-            text_dict_2 = text_dict.copy()
-            del text_dict_2[nearest]
-            text_positions_2 = list(text_dict_2.keys())
-            second_nearest = find_nearest_position(text_positions_2, start_point)[0]
-            point_match = use_bearing_to_determine_best_match_from_2_nearest_points(nearest, second_nearest,
-                                                                                    start_point)
-            movement = text_dict[point_match]
+            nearest_point = find_nearest_position(text_positions, start_point)
+            nearest = nearest_point[0]
+            nearest_distance = nearest_point[1]
+            print(nearest, nearest_distance)
+            if nearest_distance <= 15: #arbitrary number 15 seems to workf or distance between
+                point_match = nearest
+
+            elif len(text_dict) <= 1:
+                text_dict_2 = text_dict.copy()
+                del text_dict_2[nearest]
+                text_positions_2 = list(text_dict_2.keys())
+                second_nearest = find_nearest_position(text_positions_2, start_point)[0]
+                point_match = use_bearing_to_determine_best_match_from_2_nearest_points(nearest, second_nearest,
+                                                                                        start_point)
+            else:
+                point_match = nearest
+            movement = text_dict[nearest]
+
             point_1_for_angle_calc = (
                 -start_point[0], start_point[1])  # flip vertical to get positive distance in north direction
             point_2_for_angle_calc = (-point_match[0], point_match[1])
             approach = approach_from_text_box_position(point_1_for_angle_calc, point_2_for_angle_calc)
+
+
             # print('movement: ', movement, nearest, cell, arrow_points, start_point)
     #    check_text_boxes_for_movement()
+    print(cell, movement, approach)
     return movement, approach
 
 
@@ -797,13 +842,20 @@ def save_data_log(df, filename):
 
 def save_movement_log(df, filename):
     with open(filename, 'a', newline='') as f:
-        df.to_csv(f, mode='a', header=f.tell() == 0, index=False, quoting=csv.QUOTE_ALL)
+        df.to_csv(f, mode='a', header=f.tell() == 0, index=False, encoding="utf-8", quoting=csv.QUOTE_ALL)
     return
 
 
 def find_files_assessed(df):
     files_assessed = df[df['file'].notnull()]
     return files_assessed
+
+
+def find_lat_long_from_meta(file_path):
+    wb = load_workbook(filename=file_path)
+    lat = wb['META']['A2'].value
+    lon = wb['META']['B2'].value
+    return lat, lon
 
 
 def analyse_intersection_counts_for_saturn(input_folder, sections_file, nodes_file, log_file_data, log_file_movements):
@@ -872,3 +924,5 @@ def analyse_intersection_counts_for_saturn(input_folder, sections_file, nodes_fi
                         # print(f, add_to_database)
                         # gis.add_to_log(f, log_type=add_to_database, df=survey_df, movements=movement_ijk_dict, comments=None)
                         # ToDo: check movements match data movements
+
+
