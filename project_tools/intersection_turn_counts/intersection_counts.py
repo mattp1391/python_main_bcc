@@ -241,7 +241,8 @@ def find_count_data_rows(excel_file_path, sheet_name, ws, row_from, header_strin
 def get_survey_info(ws):
     row_loop = range(1, 11)
     col_loop = range(1, 11)
-    survey_info_dict = {'survey_site': None, 'survey_date': None, 'survey_weather': None}
+    survey_info_dict = {'survey_site': None, 'survey_date': None, 'survey_weather': None, 'lat': None, 'lon': None,
+                        'geocode_location': None}
     for col in col_loop:
         for row in row_loop:
             cell_value = ws.cells(row, col).value
@@ -488,6 +489,36 @@ def create_movement_dict(ws):
     return movement_dict
 
 
+def add_qld_aus_to_geolocate_text(geo_search_text):
+    if 'qld' not in geo_search_text.lower() or 'queensland' not in geo_search_text.lower():
+        geo_search_text += f'{geo_search_text}, QLD'
+    if 'aus' not in geo_search_text.lower() or 'australia' not in geo_search_text.lower():
+        geo_search_text += ', AUSTRALIA'
+    return geo_search_text
+
+def add_geocode(geo_search_text):
+    lat, lon, location = gis.geocode_coordinates(geo_search_text, user_agent='Engineering_Services_BCC',
+                                                 api='google')
+    if location is not None:
+        location = location[0]
+    return lat, lon, location
+
+
+def add_site_info(df, survey_info_dict, movement_dict):
+
+    df['spreadsheet_movement'] = df['spreadsheet_movement'].str.replace("movement ", "", case=False)
+    df['movement'] = df['spreadsheet_movement'].map(movement_dict)
+    df['intersection'] = survey_info_dict['survey_site']
+    df['date'] = survey_info_dict['survey_date']
+    df['weather'] = survey_info_dict['survey_weather']
+    df['intersection_lat'] = survey_info_dict['lat']
+    df['intersection_lon'] = survey_info_dict['lon']
+    # df_melt['geolocated_location'] = location
+
+    gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.intersection_lon, df.intersection_lat), crs='epsg:4326')
+    # df = pd.DataFrame.from_dict([movement_dict])
+    return gdf
+
 def get_austraffic_1_survey_data(excel_file_path, sheet_name):
     # ToDo: updated doc string
     """
@@ -511,38 +542,24 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
                               df_end_strings=[None, 'Peak', 'Total'])
     if df is None:
         wb.Close(True)
-        return None, None, None, None, None, None
-    survey_info_dict = get_survey_info(ws)
-    intersection = survey_info_dict['survey_site']
-    df_melt = df.drop(columns=['temp_spreadsheet_movement', 'temp_vehicle', 'spreadsheet_movement|vehicle'],
-                      axis=1)
-    df_melt['spreadsheet_movement'] = df_melt['spreadsheet_movement'].str.replace("movement ", "", case=False)
-    df_melt['movement'] = df_melt['spreadsheet_movement'].map(movement_dict)
-    df_melt['intersection'] = intersection
-    df_melt['date'] = survey_info_dict['survey_date']
-    df_melt['weather'] = survey_info_dict['survey_weather']
-    df_melt = df_melt.rename(columns={'TIME|(1/4 hr end)': 'survey_time'})
-    wb.Close(True)
-    xl.Interactive = True
-    xl.Visible = True
-    geo_search_text = survey_info_dict['survey_site']
-    if 'qld' not in geo_search_text.lower() or 'queensland' not in geo_search_text.lower():
-        geo_search_text += f'{geo_search_text}, QLD'
-    if 'aus' not in geo_search_text.lower() or 'australia' not in geo_search_text.lower():
-        geo_search_text += ', AUSTRALIA'
-    lat, lon, location = gis.geocode_coordinates(survey_info_dict['survey_site'], user_agent='Engineering_Services_BCC',
-                                                 api='google')
-    if location is not None:
-        location = location[0]
-    df_melt['intersection_lat'] = lat
-    df_melt['intersection_lon'] = lon
-    # df_melt['geolocated_location'] = location
-    df_melt['file_name'] = excel_file_path
-    counts_gdf = gpd.GeoDataFrame(df_melt,
-                                  geometry=gpd.points_from_xy(df_melt.intersection_lon, df_melt.intersection_lat),
-                                  crs='epsg:4326')
-    # df = pd.DataFrame.from_dict([movement_dict])
-    return counts_gdf, movement_dict, intersection, location, lat, lon
+        df_melt = None
+        movement_dict = None
+        survey_info_dict = None
+    else:
+        survey_info_dict = get_survey_info(ws)
+        #intersection = survey_info_dict['survey_site']
+        df_melt = df.drop(columns=['temp_spreadsheet_movement', 'temp_vehicle', 'spreadsheet_movement|vehicle'],
+                          axis=1)
+
+        df_melt = df_melt.rename(columns={'TIME|(1/4 hr end)': 'survey_time'})
+        df_melt['spreadsheet_movement'] = df_melt['spreadsheet_movement'].str.replace("movement ", "", case=False)
+        df_melt['file_name'] = excel_file_path
+        df_melt['sheet_name'] = sheet_name
+        wb.Close(True)
+        xl.Interactive = True
+        xl.Visible = True
+
+    return df_melt, movement_dict, survey_info_dict
 
 
 def get_ttm_1_survey_data(ws):
@@ -588,10 +605,11 @@ def get_survey_data_main(excel_file_path, sheet):
     location = None
     lat = None
     lon = None
+    site_info_dict = None
     if not excel_file_path.endswith('.xls'):
         survey_format = find_survey_type(excel_file_path, sheet)
         if survey_format is not None:
-            df, movement_dict, intersection, location, lat, lon = survey_functions_map[survey_format](excel_file_path,
+            df, movement_dict, site_info_dict = survey_functions_map[survey_format](excel_file_path,
                                                                                                       sheet_name=sheet)
             if movement_dict is not None:
                 if 'None' in movement_dict:
@@ -602,7 +620,7 @@ def get_survey_data_main(excel_file_path, sheet):
             df = None
             movement_dict = None
 
-    return df, movement_dict, intersection, location, lat, lon
+    return df, movement_dict, site_info_dict
 
 
 def find_survey_type(excel_file_path, sheet):
@@ -732,16 +750,14 @@ def find_turn_movement(worksheet, cell, arrow_direction=None, arrow_points=None,
                     start_point = arrow_points[0]
             else:
                 start_point = arrow_points[0]  # this will be used for ne, se, sw or nw arrows
-            # print(start_point, text_dict)
             text_positions = list(text_dict.keys())
             nearest_point = find_nearest_position(text_positions, start_point)
             nearest = nearest_point[0]
             nearest_distance = nearest_point[1]
-            print(nearest, nearest_distance)
             if nearest_distance <= 15: #arbitrary number 15 seems to workf or distance between
                 point_match = nearest
 
-            elif len(text_dict) <= 1:
+            elif len(text_dict) >= 2:
                 text_dict_2 = text_dict.copy()
                 del text_dict_2[nearest]
                 text_positions_2 = list(text_dict_2.keys())
@@ -756,11 +772,6 @@ def find_turn_movement(worksheet, cell, arrow_direction=None, arrow_points=None,
                 -start_point[0], start_point[1])  # flip vertical to get positive distance in north direction
             point_2_for_angle_calc = (-point_match[0], point_match[1])
             approach = approach_from_text_box_position(point_1_for_angle_calc, point_2_for_angle_calc)
-
-
-            # print('movement: ', movement, nearest, cell, arrow_points, start_point)
-    #    check_text_boxes_for_movement()
-    print(cell, movement, approach)
     return movement, approach
 
 

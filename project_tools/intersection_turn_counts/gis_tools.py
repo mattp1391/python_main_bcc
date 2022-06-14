@@ -14,6 +14,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from IPython.display import display
 from shapely import wkt
 from shapely.geometry import LineString
+from datetime import datetime as dt
 
 script_folder = r'C:\General\BCC_Software\Python\python_repository\python_library\python_main_bcc'
 if script_folder not in sys.path: sys.path.append(script_folder)
@@ -331,9 +332,11 @@ def get_intersection_node(df):
     # display(df[df['join_distance'] == df['join_distance'].min()]['NodeId'])
     if df.empty:
         closest_node_from_df = None
+        distance_from_node = None
     else:
         closest_node_from_df = df[df['join_distance'] == df['join_distance'].min()]['NodeId'].iloc[0]
-    return closest_node_from_df
+        distance_from_node = df['join_distance'].min()
+    return closest_node_from_df, distance_from_node
 
 
 def find_intersection_links(sections_gdf, intersection_links, nodes):
@@ -503,7 +506,7 @@ def find_node_start_and_end(network_links_gdf, nodes_gdf, start_node_col='a_node
 
 
 def find_ijk(sections_gdf, nodes_gdf, survey_gdf, movement_dict=None):
-    int_node = get_intersection_node(nodes_gdf)
+    int_node, dist_to_node = get_intersection_node(nodes_gdf)
 
     from_gdf = sections_gdf[(sections_gdf['b_node_id'] == int_node)]
     to_gdf = sections_gdf[(sections_gdf['a_node_id'] == int_node)]
@@ -513,6 +516,7 @@ def find_ijk(sections_gdf, nodes_gdf, survey_gdf, movement_dict=None):
     k = []
     # movement_ijk_dict = {}
     # display('movement_ijk_dict', movement_ijk_dict)
+    dist_to_node = []
     add_to_database = []
     direction_movements = []
     excel_keys = []
