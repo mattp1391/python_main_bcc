@@ -96,15 +96,15 @@ def check_border(ws, row, col, location=9):
     return border_style
 
 
-def check_cell_value_strings(ws, row_from, search_strings, loop_rows=None):
+def check_cell_value_strings(ws, row_from, search_strings, loop_rows=None, col_no=1):
     search_strings_lower = [str(x).lower() for x in search_strings]
     row_no_ = row_from
     output_row = -1
     if loop_rows is None:
-        loop_rows = 99999
+        loop_rows = 100
     while row_no_ <= row_from + loop_rows and output_row < 0:
 
-        cell_value = ws.cells(row_no_, 1).value
+        cell_value = ws.cells(row_no_, col_no).value
         if cell_value is None:
             if search_strings is list:
                 if None in search_strings:
@@ -120,14 +120,15 @@ def check_cell_value_strings(ws, row_from, search_strings, loop_rows=None):
     return output_row
 
 
-def create_header(ws, header_top, rows, col_left, columns):
+def create_header(ws, header_top, rows, col_left, end_col):
     # ToDo:  May cause errors for peds if 3 teirs of data
     rows = [*range(header_top, header_top + rows + 1, 1)]
-    cols = [*range(col_left, columns + 1, 1)]
+    cols = [*range(col_left, end_col + 1, 1)]
     header_1 = []
     header_2 = []
     previous_head = None
     head_dict_for_row = {}
+    #border_style = check_border(ws, row_no_, col_no, location)
     for c in cols:
         top_row = True
         head = ""
@@ -158,7 +159,7 @@ def create_header(ws, header_top, rows, col_left, columns):
     return head_array
 
 
-def check_cell_has_border(ws, row_no_, col_no=1, location=8, next_row=1):
+def find_end_row_from_border(ws, row_no_, col_no=1, location=8, next_row=1):
     border_style = -4142
     additional_rows = 0
     while border_style == -4142 and additional_rows < 10:
@@ -169,76 +170,153 @@ def check_cell_has_border(ws, row_no_, col_no=1, location=8, next_row=1):
     return row_no_
 
 
-def find_count_data_rows(excel_file_path, sheet_name, ws, row_from, header_strings, df_end_strings):
+def find_location_of_data_in_spreadsheet(ws, row_no, header_strings, df_end_strings, col_no=1, survey_type=None):
+    search_for_additional_data = True
+    header_end = None
+    end_df_row = None
+    header = None
+    use_columns = None
+    header_row = check_cell_value_strings(ws, row_no, search_strings=header_strings, loop_rows=30, col_no=col_no)
+    if header_row == -1:
+        search_for_additional_data = False
+    else:
+        header_row = find_end_row_from_border(ws, header_row, col_no=col_no, location=8, next_row=-1)
+
+        row_no = header_row
+        header_end = check_cell_value_strings(ws, row_no, search_strings=['Time Period', '(1/4 hr end)'], loop_rows=30, col_no=col_no)
+        # https://docs.microsoft.com/en-us/dotnet/api/microsoft.office.interop.excel.xllinestyle?view=excel-pia
+
+        use_columns = find_columns_used(ws, header_row, col_from=col_no)
+        if survey_type == 'matrix_1':
+            header_row += 1 #ignore street name
+        # display(use_columns)
+        start_col = column_index_from_string(use_columns.split(':')[0])
+        end_col = column_index_from_string(use_columns.split(':')[1])
+        header = create_header(ws, header_row, header_end - header_row, start_col, end_col)
+        # header = create_header(ws, header_row, header_end - header_row, 1, header_end)
+        end_df_row = check_cell_value_strings(ws, row_no, search_strings=df_end_strings, loop_rows=None, col_no=col_no) - 1
+    return row_no, search_for_additional_data, end_df_row, header, header_end, use_columns
+
+
+def create_dataframe_ausraffic(excel_file_path, sheet_name, header_end, end_df_row, use_columns, header):
+    data_df = pd.read_excel(excel_file_path,
+                            sheet_name=sheet_name,
+                            skiprows=header_end,
+                            header=None,
+                            index_col=None,
+                            nrows=end_df_row - header_end,
+                            usecols=use_columns,
+                            parse_dates=False)
+    if data_df is None:
+        return None
+    else:
+        data_df.columns = pd.MultiIndex.from_arrays(header)
+        data_df.columns = data_df.columns.map(lambda x: '|'.join([str(i) for i in x]))
+        # display(1, data_df)
+        data_df = data_df.reset_index(drop=True)
+        if data_df.columns[0].lower() == 'time|(1/4 hr end)':
+            data_df = data_df.rename(columns={data_df.columns[0]: 'TIME|(1/4 hr end)'})
+        df_melt = data_df.melt(id_vars=['TIME|(1/4 hr end)'], var_name='spreadsheet_movement|vehicle',
+                               value_name='count')
+        # display(2, df_melt)
+        df_melt[['temp_spreadsheet_movement', 'temp_vehicle']] = df_melt[
+            'spreadsheet_movement|vehicle'].str.split('|',
+                                                      expand=True)
+
+        df_melt['vehicle'] = np.where(
+            df_melt['temp_spreadsheet_movement'].str.lower().str.contains('pedestrian'),
+            'pedestrian', df_melt['temp_vehicle'])
+        df_melt['spreadsheet_movement'] = np.where(
+            df_melt['temp_spreadsheet_movement'].str.lower().str.contains('pedestrian'),
+            df_melt['temp_vehicle'], df_melt['temp_spreadsheet_movement'])
+
+        return df_melt
+
+
+def create_dataframe_matrix(excel_file_path, sheet_name, header_end, end_df_row, use_columns, header):
+    data_df = pd.read_excel(excel_file_path,
+                            sheet_name=sheet_name,
+                            skiprows=header_end,
+                            header=None,
+                            index_col=None,
+                            nrows=end_df_row - header_end,
+                            usecols=use_columns,
+                            parse_dates=False)
+    headers_test = pd.MultiIndex.from_arrays(header)
+    if data_df is None:
+        return None
+    else:
+        data_df.columns = pd.MultiIndex.from_arrays(header)
+        data_df.columns = data_df.columns.map(lambda x: '|'.join([str(i) for i in x]))
+        # display(1, data_df)
+        data_df = data_df.reset_index(drop=True)
+        col_1 = data_df.columns[0].lower()
+        col_2 = data_df.columns[1].lower()
+        col_3 = data_df.columns[2].lower()
+        if col_1 == col_2 == col_3 == 'direction|time period':
+            data_df = data_df.iloc[:,~data_df.columns.duplicated()]
+            data_df = data_df.rename(columns={data_df.columns[0]: 'TIME|(1/4 hr end)'})
+        df_melt = data_df.melt(id_vars=['TIME|(1/4 hr end)'], var_name='spreadsheet_movement|vehicle',
+                               value_name='count')
+        # display(2, df_melt)
+        df_melt[['temp_spreadsheet_movement', 'temp_vehicle']] = df_melt[
+            'spreadsheet_movement|vehicle'].str.split('|',
+                                                      expand=True)
+
+        df_melt['vehicle'] = np.where(
+            df_melt['temp_spreadsheet_movement'].str.lower().str.contains('pedestrian'),
+            'pedestrian', df_melt['temp_vehicle'])
+        df_melt['spreadsheet_movement'] = np.where(
+            df_melt['temp_spreadsheet_movement'].str.lower().str.contains('pedestrian'),
+            df_melt['temp_vehicle'], df_melt['temp_spreadsheet_movement'])
+
+        return df_melt
+
+
+def find_count_data_austraffic(excel_file_path, sheet_name, ws, row_from, header_strings, df_end_strings, col_no=1):
     search_for_additional_data = True
     spreadsheet_df = None
     dataframes = []
     row_no = row_from
     while search_for_additional_data:
-        header_row = check_cell_value_strings(ws, row_no, search_strings=header_strings, loop_rows=30)
-        if header_row == -1:
-            search_for_additional_data = False
-        else:
-            header_row = check_cell_has_border(ws, header_row, col_no=1, location=8, next_row=-1)
+        spreadsheet_location_info = find_location_of_data_in_spreadsheet(ws, row_no, header_strings, df_end_strings,
+                                                                         col_no=col_no)
+        search_for_additional_data = spreadsheet_location_info[1]
 
-            row_no = header_row
-            header_end = check_cell_value_strings(ws, row_no, search_strings=['(1/4 hr end)'], loop_rows=30)
-            header_end = check_cell_has_border(ws, header_end, col_no=1, location=9, next_row=1)
-
-            # https://docs.microsoft.com/en-us/dotnet/api/microsoft.office.interop.excel.xllinestyle?view=excel-pia
-
-            use_columns = find_columns_used(ws, header_row, header_end)
-            # display(use_columns)
-            start_col = column_index_from_string(use_columns.split(':')[0])
-            end_col = column_index_from_string(use_columns.split(':')[1])
-            header = create_header(ws, header_row, header_end - header_row, start_col, end_col - start_col + 1)
-
-            # header = create_header(ws, header_row, header_end - header_row, 1, header_end)
-            end_df_row = check_cell_value_strings(ws, row_no, search_strings=df_end_strings, loop_rows=None) - 1
-            if end_df_row == -1:
-                search_for_additional_data = False
+        if search_for_additional_data:
+            row_no = spreadsheet_location_info[0]
+            end_df_row = spreadsheet_location_info[2]
+            header = spreadsheet_location_info[3]
+            header_end = spreadsheet_location_info[4]
+            use_columns = spreadsheet_location_info[5]
             row_no = end_df_row
-            if search_for_additional_data:
-                data_df = pd.read_excel(excel_file_path,
-                                        sheet_name=sheet_name,
-                                        skiprows=header_end,
-                                        header=None,
-                                        index_col=None,
-                                        nrows=end_df_row - header_end,
-                                        usecols=use_columns,
-                                        parse_dates=False)
-                pd.MultiIndex.from_arrays(header)
-                if data_df is None:
-                    return None
-                else:
-                    data_df.columns = pd.MultiIndex.from_arrays(header)
-                    data_df.columns = data_df.columns.map(lambda x: '|'.join([str(i) for i in x]))
-                    # display(1, data_df)
-                    data_df = data_df.reset_index(drop=True)
-                    # display(data_df.columns[0])
-                    if data_df.columns[0].lower() == 'time|(1/4 hr end)':
-                        data_df = data_df.rename(columns={data_df.columns[0]: 'TIME|(1/4 hr end)'})
-                    df_melt = data_df.melt(id_vars=['TIME|(1/4 hr end)'], var_name='spreadsheet_movement|vehicle',
-                                           value_name='count')
-                    # display(2, df_melt)
-                    df_melt[['temp_spreadsheet_movement', 'temp_vehicle']] = df_melt[
-                        'spreadsheet_movement|vehicle'].str.split('|',
-                                                                  expand=True)
-
-                    df_melt['vehicle'] = np.where(
-                        df_melt['temp_spreadsheet_movement'].str.lower().str.contains('pedestrian'),
-                        'pedestrian', df_melt['temp_vehicle'])
-                    df_melt['spreadsheet_movement'] = np.where(
-                        df_melt['temp_spreadsheet_movement'].str.lower().str.contains('pedestrian'),
-                        df_melt['temp_vehicle'], df_melt['temp_spreadsheet_movement'])
-
-                    dataframes.append(df_melt)
+            data_df = pd.read_excel(excel_file_path, sheet_name=sheet_name, skiprows=header_end, header=None,
+                                    index_col=None, nrows=end_df_row - header_end, usecols=use_columns,
+                                    parse_dates=False)
+            #pd.MultiIndex.from_arrays(header)
+            if data_df is None:
+                return None
+            else:
+                df_melt = create_dataframe_ausraffic(excel_file_path, sheet_name, header_end, end_df_row, use_columns,
+                                                     header)
+                dataframes.append(df_melt)
     if dataframes:
         spreadsheet_df = pd.concat(dataframes)
     return spreadsheet_df
 
 
-def get_survey_info(ws):
+def get_survey_info_matrix(ws):
+    survey_site = ws.cells(6, 5).value.replace(':', '').strip()
+    survey_date = ws.cells(8, 5).value.replace(':', '').strip()
+    survey_weather = ws.cells(9, 5).value.replace(':', '').strip()
+    if survey_site[:1].isnumeric():
+        survey_site = survey_site.split(' ', 1)[1]
+    survey_info_dict = {'survey_weather': survey_weather, 'survey_date': survey_date, 'survey_site': survey_site}
+
+    return survey_info_dict
+
+
+def get_survey_info_austraffic(ws):
     row_loop = range(1, 11)
     col_loop = range(1, 11)
     survey_info_dict = {'survey_site': None, 'survey_date': None, 'survey_weather': None, 'lat': None, 'lon': None,
@@ -303,11 +381,11 @@ def pandas_read_excel_multi_index_with_use_cols(excel_file, sheet_name=0, header
     return df
 
 
-def find_columns_used(ws, top_row, bottom_row, col_from=1):
+def find_columns_used_ss(ws, top_row, bottom_row, col_from=1):
+    # ToDo: Delete this function if the function below works for all cases.  Otherwise use this for Austraffic.
     col_no = col_from
     # if ws.cells(row_no, col_no).value is None:
     #    row_no += 1
-
     col_end_found = False
     while not col_end_found:
         row_no = top_row
@@ -326,6 +404,27 @@ def find_columns_used(ws, top_row, bottom_row, col_from=1):
 
     use_columns = f'{start_col}:{end_col}'
     return use_columns
+
+
+def find_columns_used(ws, top_row, col_from=1):
+    # if ws.cells(row_no, col_no).value is None:
+    #    row_no += 1
+    col_no = col_from
+    # if ws.cells(row_no, col_no).value is None:
+    #    row_no += 1
+    border_location = excel_border_checks['xlEdgeTop']
+    border_style = None
+    col_end_found = False
+    while border_style != -4142:
+        border_style = check_border(ws, top_row, col_no, border_location)  # 8 is location for top of cell refer top doc
+        if border_style != -4142:
+            col_no += 1
+    start_col = get_column_letter(col_from)
+    end_col = get_column_letter(col_no - 1)
+
+    use_columns = f'{start_col}:{end_col}'
+    return use_columns
+
 
 
 '''
@@ -461,6 +560,7 @@ def create_movement_dict(ws):
                 angle_round = int(gis.custom_round(angle, base=45))
                 direction_dict = gis.get_direction_dict()
                 direction = direction_dict[angle_round]
+                print('arrow', line_name)
                 movement, approach = find_turn_movement(ws, cell, arrow_direction=direction, arrow_points=line_pos,
                                                         text_dict=text_box_dict)
                 # correct direction for slip turn arrows
@@ -496,6 +596,7 @@ def add_qld_aus_to_geolocate_text(geo_search_text):
         geo_search_text += ', AUSTRALIA'
     return geo_search_text
 
+
 def add_geocode(geo_search_text):
     lat, lon, location = gis.geocode_coordinates(geo_search_text, user_agent='Engineering_Services_BCC',
                                                  api='google')
@@ -505,7 +606,6 @@ def add_geocode(geo_search_text):
 
 
 def add_site_info(df, survey_info_dict, movement_dict):
-
     df['spreadsheet_movement'] = df['spreadsheet_movement'].str.replace("movement ", "", case=False)
     df['movement'] = df['spreadsheet_movement'].map(movement_dict)
     df['intersection'] = survey_info_dict['survey_site']
@@ -518,6 +618,7 @@ def add_site_info(df, survey_info_dict, movement_dict):
     gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.intersection_lon, df.intersection_lat), crs='epsg:4326')
     # df = pd.DataFrame.from_dict([movement_dict])
     return gdf
+
 
 def get_austraffic_1_survey_data(excel_file_path, sheet_name):
     # ToDo: updated doc string
@@ -538,16 +639,16 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
     wb = xl.Workbooks.Open(Filename=excel_file_path)
     ws = wb.Worksheets(sheet_name)
     movement_dict = create_movement_dict(ws)
-    df = find_count_data_rows(excel_file_path, sheet_name, ws, row_from=1, header_strings='Time',
-                              df_end_strings=[None, 'Peak', 'Total'])
+    df = find_count_data_austraffic(excel_file_path, sheet_name, ws, row_from=1, header_strings='Time',
+                                    df_end_strings=[None, 'Peak', 'Total'])
     if df is None:
         wb.Close(True)
         df_melt = None
         movement_dict = None
         survey_info_dict = None
     else:
-        survey_info_dict = get_survey_info(ws)
-        #intersection = survey_info_dict['survey_site']
+        survey_info_dict = get_survey_info_austraffic(ws)
+        # intersection = survey_info_dict['survey_site']
         df_melt = df.drop(columns=['temp_spreadsheet_movement', 'temp_vehicle', 'spreadsheet_movement|vehicle'],
                           axis=1)
 
@@ -562,14 +663,79 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
     return df_melt, movement_dict, survey_info_dict
 
 
-def get_ttm_1_survey_data(ws):
+def get_ttm_1_survey_data(excel_file_path, sheet_name):
     df = pd.DataFrame
     return df
 
 
-def get_matrix_1_survey_data(ws):
-    df = pd.DataFrame
-    return df
+def find_count_data_matrix(excel_file_path, sheet_name, ws, row_from, header_strings, df_end_strings, col_no=2):
+    search_for_additional_data = True
+    spreadsheet_df = None
+    dataframes = []
+    row_no = row_from
+    header_strings = 'approach'
+    df_end_strings = 'total'
+    while search_for_additional_data:
+        spreadsheet_location_info = find_location_of_data_in_spreadsheet(ws, row_no, header_strings, df_end_strings,
+                                                                         col_no=col_no, survey_type='matrix_1')
+        search_for_additional_data = spreadsheet_location_info[1]
+
+        if search_for_additional_data:
+            row_no = spreadsheet_location_info[0]
+            end_df_row = spreadsheet_location_info[2]
+            header = spreadsheet_location_info[3]
+            header_end = spreadsheet_location_info[4]
+            use_columns = spreadsheet_location_info[5]
+            row_no = end_df_row
+            data_df = pd.read_excel(excel_file_path, sheet_name=sheet_name, skiprows=header_end, header=None,
+                                    index_col=None, nrows=end_df_row - header_end, usecols=use_columns,
+                                    parse_dates=False)
+            #pd.MultiIndex.from_arrays(header)
+            if data_df is None:
+                return None
+            else:
+                df_melt = create_dataframe_matrix(excel_file_path, sheet_name, header_end, end_df_row, use_columns,
+                                                     header)
+                dataframes.append(df_melt)
+    if dataframes:
+        spreadsheet_df = pd.concat(dataframes)
+    return spreadsheet_df
+
+
+def get_matrix_1_survey_data(excel_file_path, sheet_name):
+    movement_dict = {'1': 'S_W',
+                     '2': 'S_N',
+                     '3': 'S_E',
+                     '3U': 'S_S',
+                     '4': 'S_W',
+                     '5': 'S_N',
+                     '6': 'S_E',
+                     '6U': 'S_S',
+                     '7': 'S_W',
+                     '8': 'S_N',
+                     '9': 'S_E',
+                     '9U': 'S_S',
+                     '10': 'S_W',
+                     '11': 'S_N',
+                     '12': 'S_E',
+                     '12U': 'S_S'
+                     }
+    xl = Dispatch('Excel.Application')
+    #xl.Interactive = False
+    #xl.Visible = False
+    wb = xl.Workbooks.Open(Filename=excel_file_path)
+    ws = wb.Worksheets(sheet_name)
+    df = find_count_data_matrix(excel_file_path, sheet_name, ws, row_from=1, header_strings='Approach',
+                                    df_end_strings=[None, 'Peak', 'Total'])
+    if df is None:
+        wb.Close(True)
+        movement_dict = None
+        survey_info_dict = None
+    else:
+        survey_info_dict = get_survey_info_matrix(ws)
+    df = df[df['count'].notna()]
+    wb.Close(True)
+    return df, movement_dict, survey_info_dict
 
 
 def get_data_audit_systems_1_survey_data(ws):
@@ -583,7 +749,6 @@ survey_functions_map = {"austraffic_1": get_austraffic_1_survey_data, "ttm_1": g
 
 
 def get_sheets_in_workbook(file_path):
-
     if not file_path.endswith('.xls'):
         wb = load_workbook(filename=file_path)
         all_sheets = wb.sheetnames
@@ -596,21 +761,18 @@ def get_sheets_in_workbook(file_path):
     return sheets
 
 
-
 def get_survey_data_main(excel_file_path, sheet):
     # ToDo: add capability for .xls files
     df = None
     movement_dict = None
-    intersection = None
-    location = None
-    lat = None
-    lon = None
     site_info_dict = None
     if not excel_file_path.endswith('.xls'):
         survey_format = find_survey_type(excel_file_path, sheet)
+        print('sheet_format', survey_format)
         if survey_format is not None:
             df, movement_dict, site_info_dict = survey_functions_map[survey_format](excel_file_path,
-                                                                                                      sheet_name=sheet)
+                                                                                    sheet_name=sheet)
+
             if movement_dict is not None:
                 if 'None' in movement_dict:
                     # ToDo: update movement dict for text boxes??
@@ -627,18 +789,29 @@ def find_survey_type(excel_file_path, sheet):
     wb = load_workbook(filename=excel_file_path)
     sheets = wb.sheetnames
     survey_format = None
+    format_found = True
     # ws.get_squared_range(min_col=1, min_row=1, max_col=1, max_row=10)
     # print(wb[sheet].chartsheet)
-    if sheets == ['TABLE', 'excel_file_path']:
-        survey_format = 'austraffic_1'
+    # if sheets == ['TABLE', 'excel_file_path']:
+    #    survey_format = 'austraffic_1'
+    # else:
+    try:
+        a1_value = wb[sheet]["A1"].value
+    except:
+        # ToDo: update this.  this was a quick fix for chart sheet error
+        print(f'update this.  This was a quick fix for chart sheet error for sheet {sheet}.')
+        return survey_format
+
+    if a1_value is not None:
+
+        if str(a1_value).lower() == 'austraffic video intersection count':
+            survey_format = 'austraffic_1'
+
     else:
-        try:
-            if wb[sheet]["A1"].value is not None:
-                if str(wb[sheet]["A1"].value).lower() == 'austraffic video intersection count':
-                    survey_format = 'austraffic_1'
-        except:
-            # ToDo: update this.  this was a quick fix for chart sheet error
-            print(f'update this.  This was a quick fix for chart sheet error for sheet {sheet}.')
+        e10_value = wb[sheet]["E10"].value
+        e11_value = wb[sheet]["E11"].value
+        if e10_value == ': Classified Intersection Count' and e11_value == ': 15 mins Data':
+            survey_format = 'matrix_1'
     wb.close()
     return survey_format
 
@@ -754,7 +927,8 @@ def find_turn_movement(worksheet, cell, arrow_direction=None, arrow_points=None,
             nearest_point = find_nearest_position(text_positions, start_point)
             nearest = nearest_point[0]
             nearest_distance = nearest_point[1]
-            if nearest_distance <= 15: #arbitrary number 15 seems to workf or distance between
+            print('nearest_distance', nearest_distance)
+            if nearest_distance <= 13:  # arbitrary number 15 seems to workf or distance between
                 point_match = nearest
 
             elif len(text_dict) >= 2:
@@ -869,71 +1043,105 @@ def find_lat_long_from_meta(file_path):
     return lat, lon
 
 
-def analyse_intersection_counts_for_saturn(input_folder, sections_file, nodes_file, log_file_data, log_file_movements):
-    # xl = Dispatch('Excel.Application')
-    # wb = xl.Workbooks.Open(Filename=excel_file_path)
-    # wb.sheets.Names
-    # survey_sheet_info = aic.find_survey_type(excel_file_path)
-    # print('start')
-    # folder_path = r"G:\BI\TPS\Transport Engineering\MODELS\BCASM_development\TrafficCounts\Austraffic_only\17480 - Site 1. Adelaide Street & Creek Street, Brisbane City (Wednesday, 10 February 2021).xlsx"
-    folder_path = input_folder
-    path_type = fu.check_file_path_is_folder_or_directory(folder_path)
-    #print(path_type)
+def analyse_intersection_counts_for_saturn(file_path, sections_file, nodes_file, log_file_data, log_file_movements,
+                                           from_file=None, test_run=False):
+    path_type = fu.check_file_path_is_folder_or_directory(file_path)
     if path_type is not None:
         if path_type == 'file':
-            files = [folder_path]
+            files = [file_path]
         elif path_type == 'directory':
-            files = fu.get_list_of_files_in_directory(folder_path, file_type='.xl*', sub_folders=False)
+            files = fu.get_list_of_files_in_directory(file_path, file_type='.xl*', sub_folders=False)
+        if from_file is not None:
+            files = files[from_file:]
         for f in tqdm(files):
-            #print(f)
+            # print(f)
             sheet_names = get_sheets_in_workbook(f)
+            # print(sheet_names)
+
             if sheet_names is not None:
+                if 'META' in sheet_names:
+                    lat_lon = find_lat_long_from_meta(f)
+                else:
+                    lat_lon = None
                 for sheet in sheet_names:
-                    #print(sheet)
+                    # print(sheet)
                     if 'summary' not in sheet.lower():
                         movement_ijk_dict = None
-                        survey_df, movement_dict, intersection, geo_location, lat, lon = get_survey_data_main(f, sheet)
+                        survey_df, movement_dict, survey_info_dict = get_survey_data_main(f, sheet)
+                        # print(movement_dict, survey_info_dict, survey_df)
+
                         if survey_df is not None:
-                            survey_df.loc[:, 'sheet_name'] = sheet
-                            save_data_log(survey_df, log_file_data)
+                            if lat_lon is not None:
+                                lat = lat_lon[0]
+                                lon = lat_lon[1]
+                                geo_location = 'META'
+                            else:
+                                geo_search_text = add_qld_aus_to_geolocate_text(survey_info_dict['survey_site'])
+                                lat, lon, geo_location = add_geocode(geo_search_text)
+                            survey_info_dict['lat'] = lat
+                            survey_info_dict['lon'] = lon
+                            survey_info_dict['geocode_location'] = geo_location
+
+                            # survey_df_2 = add_site_info(survey_df, survey_info_dict, movement_dict)
+                            if not test_run:
+                                save_data_log(survey_df, log_file_data)
+                        else:
+                            survey_info_dict = {'survey_site': None, 'survey_date': None, 'survey_weather': None,
+                                                'lat': None, 'lon': None,
+                                                'geocode_location': None}
                         if movement_dict is not None:
                             if movement_dict == {}:
+
                                 movement_ijk_dict = {'excel_movement': [None], 'geographic_movement': [None],
                                                      'angle_from': [None], 'angle_to': [None], 'i': [None], 'j': [None],
                                                      'k': [None], 'log_type': [0.1]}
+                                movement_log_df = pd.DataFrame.from_dict(movement_ijk_dict)
+                                movement_log_df.loc[:, 'spreadsheet_approach_from_to'] = None
+
                             else:
+                                survey_df_2 = add_site_info(survey_df, survey_info_dict, movement_dict)
                                 sections_gdf = gis.create_sections_gdf(sections_file)
                                 nodes_gdf = gis.create_nodes_gdf(nodes_file, crs='epsg:4326')
                                 sections_gdf = gis.find_node_start_and_end(sections_gdf, nodes_gdf)
                                 node_distance_gdf = gis.find_node_distance_from_intersection(nodes_gdf,
-                                                                                             survey_df=survey_df)
+                                                                                             survey_df=survey_df_2)
                                 movement_ijk_dict = gis.find_ijk(sections_gdf, node_distance_gdf, survey_df,
                                                                  movement_dict=movement_dict)
+                                movement_log_df = pd.DataFrame.from_dict(movement_ijk_dict)
+                                movement_log_df.loc[:, 'spreadsheet_approach_from_to'] = movement_log_df[
+                                    'excel_movement'].map(movement_dict)
+
+
                         else:
                             movement_ijk_dict = {'excel_movement': [None], 'geographic_movement': [None],
                                                  'angle_from': [None], 'angle_to': [None], 'i': [None], 'j': [None],
                                                  'k': [None], 'log_type': [0]}
                             # no data found
+                            movement_log_df = pd.DataFrame.from_dict(movement_ijk_dict)
+                            movement_log_df.loc[:, 'spreadsheet_approach_from_to'] = None
 
                         # if add_to_database == 1:
                         # output_dict =
                         # print(intersection, movement_ijk_dict)
-                        display(movement_log_df)
-                        movement_log_df = pd.DataFrame.from_dict(movement_ijk_dict)
+                        # display(movement_log_df)
+
                         movement_log_df.loc[:, 'file_name'] = f
                         movement_log_df.loc[:, 'sheet_name'] = sheet
-                        movement_log_df.loc[:, 'intersection'] = intersection
+                        movement_log_df.loc[:, 'intersection'] = survey_info_dict.get('survey_site')
                         movement_log_df.loc[:, 'geocode_location'] = geo_location
                         movement_log_df.loc[:, 'lat'] = lat
                         movement_log_df.loc[:, 'lon'] = lon
+                        movement_log_df.loc[:, 'survey_date'] = survey_info_dict.get('survey_date')
+                        movement_log_df.loc[:, 'weather'] = survey_info_dict.get('survey_weather')
+
                         movement_log_df = movement_log_df[
-                            ['intersection', 'excel_movement', 'geographic_movement', 'geocode_location', 'lat', 'lon',
-                             'angle_from', 'angle_to', 'i', 'j', 'k', 'log_type', 'file_name', 'sheet_name']]
-                        save_movement_log(movement_log_df, log_file_movements)
+                            ['intersection', 'excel_movement', 'spreadsheet_approach_from_to', 'geographic_movement',
+                             'survey_date', 'weather', 'geocode_location', 'lat', 'lon', 'angle_from', 'angle_to', 'i',
+                             'j', 'k', 'log_type', 'file_name', 'sheet_name']]
+                        if not test_run:
+                            save_movement_log(movement_log_df.sort_values(by=['excel_movement']), log_file_movements)
                         # else:
                         # clear_output(wait=True)
                         # print(f, add_to_database)
                         # gis.add_to_log(f, log_type=add_to_database, df=survey_df, movements=movement_ijk_dict, comments=None)
                         # ToDo: check movements match data movements
-
-
