@@ -390,7 +390,6 @@ def create_map_image(add_to_database, ijk_movements, xl_file,
         print('add to database and log')
         add_to_log(xl_file, add_to_database, comments=None)
 
-
     elif add_to_database == 2:
         log_for_later = True
         if log_for_later:
@@ -507,7 +506,7 @@ def find_node_start_and_end(network_links_gdf, nodes_gdf, start_node_col='a_node
 
 def find_ijk(sections_gdf, nodes_gdf, survey_gdf, movement_dict=None):
     int_node, dist_to_node = get_intersection_node(nodes_gdf)
-
+    dist_to_node = round(dist_to_node, 2)
     from_gdf = sections_gdf[(sections_gdf['b_node_id'] == int_node)]
     to_gdf = sections_gdf[(sections_gdf['a_node_id'] == int_node)]
     approach_to_direction = {'N': 'S', 'NE': 'SW', 'E': 'W', 'SE': 'NW', 'S': 'N', 'SW': 'NE', 'W': 'E', 'NW': 'SE'}
@@ -516,7 +515,7 @@ def find_ijk(sections_gdf, nodes_gdf, survey_gdf, movement_dict=None):
     k = []
     # movement_ijk_dict = {}
     # display('movement_ijk_dict', movement_ijk_dict)
-    dist_to_node = []
+    dist_to_node_list = []
     add_to_database = []
     direction_movements = []
     excel_keys = []
@@ -584,8 +583,9 @@ def find_ijk(sections_gdf, nodes_gdf, survey_gdf, movement_dict=None):
             angles_from.append(None)
             angles_to.append(None)
             direction_movements.append(None)
+        dist_to_node_list.append(dist_to_node)
         excel_keys.append(excel_key)
     movement_ijk_dict = {'excel_movement': excel_keys, 'geographic_movement': direction_movements,
                          'angle_from': angles_from, 'angle_to': angles_to, 'i': i, 'j': j, 'k': k,
-                         'log_type': add_to_database}
+                         'log_type': add_to_database, 'dist_to_node': dist_to_node}
     return movement_ijk_dict
