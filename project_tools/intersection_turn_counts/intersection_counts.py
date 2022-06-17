@@ -212,6 +212,7 @@ def create_dataframe_ausraffic(excel_file_path, sheet_name, header_end, end_df_r
     if data_df is None:
         return None
     else:
+
         data_df.columns = pd.MultiIndex.from_arrays(header)
         data_df.columns = data_df.columns.map(lambda x: '|'.join([str(i) for i in x]))
         # display(1, data_df)
@@ -248,6 +249,13 @@ def create_dataframe_matrix(excel_file_path, sheet_name, header_end, end_df_row,
     if data_df is None:
         return None
     else:
+        header_items = len(header[0])
+        columns_in_df = len(data_df.columns)
+        if header_items > columns_in_df:
+            items_to_remove = header_items - columns_in_df
+            top_header = header[0][:-items_to_remove]
+            bottom_header = header[1][:-items_to_remove]
+            header = [top_header, bottom_header]
         data_df.columns = pd.MultiIndex.from_arrays(header)
         data_df.columns = data_df.columns.map(lambda x: '|'.join([str(i) for i in x]))
         # display(1, data_df)
@@ -641,8 +649,8 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
     DataFrame: {movement_1: Origin_Destination, movement_2, origin_destination}
     """
     xl = Dispatch('Excel.Application')
-    xl.Interactive = False
-    xl.Visible = False
+    #xl.Interactive = False
+    #xl.Visible = False
     wb = xl.Workbooks.Open(Filename=excel_file_path)
     ws = wb.Worksheets(sheet_name)
     movement_dict = create_movement_dict(ws)
@@ -664,8 +672,8 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
         df_melt['file_name'] = excel_file_path
         df_melt['sheet_name'] = sheet_name
         wb.Close(True)
-        xl.Interactive = True
-        xl.Visible = True
+        #xl.Interactive = True
+        #xl.Visible = True
 
     return df_melt, movement_dict, survey_info_dict
 
@@ -714,18 +722,18 @@ def get_matrix_1_survey_data(excel_file_path, sheet_name):
                      '2': 'S_N',
                      '3': 'S_E',
                      '3U': 'S_S',
-                     '4': 'S_W',
-                     '5': 'S_N',
-                     '6': 'S_E',
-                     '6U': 'S_S',
-                     '7': 'S_W',
-                     '8': 'S_N',
-                     '9': 'S_E',
-                     '9U': 'S_S',
-                     '10': 'S_W',
-                     '11': 'S_N',
-                     '12': 'S_E',
-                     '12U': 'S_S'
+                     '4': 'E_W',
+                     '5': 'E_N',
+                     '6': 'E_E',
+                     '6U': 'E_S',
+                     '7': 'N_W',
+                     '8': 'N_N',
+                     '9': 'N_E',
+                     '9U': 'N_S',
+                     '10': 'W_W',
+                     '11': 'W_N',
+                     '12': 'W_E',
+                     '12U': 'W_S'
                      }
     xl = Dispatch('Excel.Application')
     # xl.Interactive = False
@@ -884,7 +892,7 @@ def find_turn_movement(worksheet, cell, arrow_direction=None, arrow_points=None,
     movement = None
     approach = None
     cell_value = worksheet.cells(cell[0], cell[1]).value
-    if cell_value is not None and type(cell_value) != 'str:':  # this is to capture through movements where the arrow starts in the movement cell
+    if cell_value is not None and not isinstance(cell_value, str):  # this is to capture through movements where the arrow starts in the movement cell
         movement = int(cell_value)
         if arrow_direction == 'N':
             approach = 'S'
@@ -1045,7 +1053,7 @@ def check_log_file_exists_create_return_df(file_path, log_type=0):
 
 def save_data_log(df, filename):
     with open(filename, 'a', newline='') as f:
-        df.to_csv(f, mode='a', header=f.tell() == 0, index=False, quoting=csv.QUOTE_ALL)
+        df.to_csv(f, mode='a', header=f.tell() == 0, index=False, encoding="utf-8", quoting=csv.QUOTE_ALL)
     return
 
 
@@ -1176,3 +1184,4 @@ def analyse_intersection_counts_for_saturn(file_path, sections_file, nodes_file,
                         # print(f, add_to_database)
                         # gis.add_to_log(f, log_type=add_to_database, df=survey_df, movements=movement_ijk_dict, comments=None)
                         # ToDo: check movements match data movements
+

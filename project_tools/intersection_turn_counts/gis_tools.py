@@ -14,6 +14,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from IPython.display import display
 from shapely import wkt
 from shapely.geometry import LineString
+from pyproj import Proj, transform
 from datetime import datetime as dt
 
 script_folder = r'C:\General\BCC_Software\Python\python_repository\python_library\python_main_bcc'
@@ -589,3 +590,24 @@ def find_ijk(sections_gdf, nodes_gdf, survey_gdf, movement_dict=None):
                          'angle_from': angles_from, 'angle_to': angles_to, 'i': i, 'j': j, 'k': k,
                          'log_type': add_to_database, 'dist_to_node': dist_to_node}
     return movement_ijk_dict
+
+
+def add_map_info_coords(lat, lon, in_proj, out_proj):
+    #print(lat, lon)
+    if lat is None or lon is None:
+        new_coords = None
+    else:
+        x2,y2 = transform(in_proj, out_proj, lat, lon)
+        new_coords = f'Set Map Center ({x2},{y2})'
+    #print(x2, y2, new_coords)
+    return new_coords
+
+
+def create_in_out_projections_for_converstion(in_projection_crs=None, out_projection_crs=None):
+    if in_projection_crs == None:
+        in_projection_crs = "EPSG:4326"
+    if out_projection_crs == None:
+        out_projection_crs = "EPSG:28356"
+    in_projection = pyproj.CRS(in_projection_crs)
+    out_projection = pyproj.CRS(out_projection_crs)
+    return in_projection, out_projection
