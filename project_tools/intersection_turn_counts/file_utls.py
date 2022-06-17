@@ -15,6 +15,11 @@ def check_if_folder_exists(my_dir):
     return folder_exists
 
 
+def check_file_exists(my_file):
+    file_exists = os.path.isfile(my_file)
+    return file_exists
+
+
 def create_folder_if_does_not_exist(my_dir):
     folder_exists = os.path.isdir(my_dir)
     if not folder_exists:

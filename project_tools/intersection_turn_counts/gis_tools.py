@@ -593,20 +593,20 @@ def find_ijk(sections_gdf, nodes_gdf, survey_gdf, movement_dict=None):
 
 
 def add_map_info_coords(lat, lon, in_proj, out_proj):
-    #print(lat, lon)
+    # print(lat, lon)
     if lat is None or lon is None:
         new_coords = None
     else:
-        x2,y2 = transform(in_proj, out_proj, lat, lon)
+        x2, y2 = transform(in_proj, out_proj, lat, lon)
         new_coords = f'Set Map Center ({x2},{y2})'
-    #print(x2, y2, new_coords)
+    # print(x2, y2, new_coords)
     return new_coords
 
 
-def create_in_out_projections_for_converstion(in_projection_crs=None, out_projection_crs=None):
-    if in_projection_crs == None:
+def create_in_out_projections_for_conversion(in_projection_crs=None, out_projection_crs=None):
+    if in_projection_crs is None:
         in_projection_crs = "EPSG:4326"
-    if out_projection_crs == None:
+    if out_projection_crs is None:
         out_projection_crs = "EPSG:28356"
     in_projection = pyproj.CRS(in_projection_crs)
     out_projection = pyproj.CRS(out_projection_crs)

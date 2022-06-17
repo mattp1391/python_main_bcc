@@ -176,14 +176,14 @@ def find_location_of_data_in_spreadsheet(ws, row_no, header_strings, df_end_stri
     end_df_row = None
     header = None
     use_columns = None
-    header_row = check_cell_value_strings(ws, row_no, search_strings=header_strings, loop_rows=30, col_no=col_no)
+    header_row = check_cell_value_strings(ws, row_no, search_strings=header_strings, loop_rows=40, col_no=col_no)
     if header_row == -1:
         search_for_additional_data = False
     else:
         header_row = find_end_row_from_border(ws, header_row, col_no=col_no, location=8, next_row=-1)
 
         row_no = header_row
-        header_end = check_cell_value_strings(ws, row_no, search_strings=['Time Period', '(1/4 hr end)'], loop_rows=30,
+        header_end = check_cell_value_strings(ws, row_no, search_strings=['Time Period', '(1/4 hr end)'], loop_rows=40,
                                               col_no=col_no)
         # https://docs.microsoft.com/en-us/dotnet/api/microsoft.office.interop.excel.xllinestyle?view=excel-pia
 
@@ -1074,6 +1074,12 @@ def find_lat_long_from_meta(file_path):
     lon = wb['META']['B2'].value
     return lat, lon
 
+def exclude_files_already_assessed(all_files, assessed_file):
+    df_analysed = pd.read_csv(assessed_file, encoding='cp1252')
+    df_file_names = df_analysed['file_name'].unique().tolist()
+    new_files = list(set(all_files) - set(df_file_names))
+    return new_files
+
 
 def analyse_intersection_counts_for_saturn(file_path, sections_file, nodes_file, log_file_data, log_file_movements,
                                            from_file=None, test_run=False):
@@ -1083,8 +1089,12 @@ def analyse_intersection_counts_for_saturn(file_path, sections_file, nodes_file,
             files = [file_path]
         elif path_type == 'directory':
             files = fu.get_list_of_files_in_directory(file_path, file_type='.xl*', sub_folders=False)
+
         if from_file is not None:
             files = files[from_file:]
+        if fu.check_file_exists(log_file_movements):
+            files = exclude_files_already_assessed(all_files=files, assessed_file=log_file_movements)
+
         for f in tqdm(files):
             if test_run:
                 print(f)
@@ -1173,15 +1183,16 @@ def analyse_intersection_counts_for_saturn(file_path, sections_file, nodes_file,
                                                                  movement_log_df['survey_date'].dt.day_name())
                         movement_log_df.loc[:, 'weather'] = survey_info_dict.get('survey_weather')
 
+                        in_proj, out_proj = gis.create_in_out_projections_for_conversion("EPSG:4326", "EPSG:28356")
+                        movement_log_df.loc[:, 'map_info_location'] = movement_log_df.apply(
+                            lambda row: gis.add_map_info_coords(row['lat'], row['lon'], in_proj, out_proj), axis=1)
                         movement_log_df = movement_log_df[
                             ['intersection', 'excel_movement', 'spreadsheet_approach_from_to', 'geographic_movement',
                              'survey_date', 'day', 'weather', 'geocode_location', 'dist_to_node', 'lat', 'lon', 'angle_from', 'angle_to', 'i',
-                             'j', 'k', 'log_type', 'file_name', 'sheet_name']]
+                             'j', 'k', 'log_type', 'file_name', 'sheet_name', 'map_info_location']]
                         if not test_run:
                             save_movement_log(movement_log_df.sort_values(by=['excel_movement']), log_file_movements)
-                        # else:
-                        # clear_output(wait=True)
-                        # print(f, add_to_database)
-                        # gis.add_to_log(f, log_type=add_to_database, df=survey_df, movements=movement_ijk_dict, comments=None)
-                        # ToDo: check movements match data movements
+                        else:
+                            display(movement_log_df)
+    # ToDo: check movements match data movements
 
