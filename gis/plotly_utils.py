@@ -3,6 +3,7 @@ import geopandas as gpd
 import shapely.geometry
 import numpy as np
 from IPython.display import display
+import kaleido
 
 def plot_lines_from_gdf(geo_df, hover_name=None, mapbox_style=None, text=None, zoom=15):
     """
@@ -40,7 +41,8 @@ def plot_lines_from_gdf(geo_df, hover_name=None, mapbox_style=None, text=None, z
             texts = np.append(texts, None)
     fig = px.line_mapbox(lat=lats, lon=lons, hover_name=hover_names, labels=texts, text=texts,
                          mapbox_style=mapbox_style, zoom=zoom)
-    fig.show()
+    img_bytes = fig.to_image(format="png")
+    return img_bytes
 
 
 def snip_excel_image():

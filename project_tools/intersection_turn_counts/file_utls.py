@@ -1,26 +1,25 @@
-from win32com.client import Dispatch
-from openpyxl import load_workbook, Workbook
-from PIL import ImageGrab
-from openpyxl.utils import get_column_letter, column_index_from_string
-import numpy as np
-import math
-import geopandas as gpd
-import pandas as pd
-import numbers
-from datetime import datetime, timedelta
-import time
-import pywintypes
-from IPython.display import display
-import pathlib
 import os, sys, glob
+import pandas as pd
+import csv
 
-script_folder = r'C:\General\BCC_Software\Python\python_repository\python_library\python_main_bcc'
-if script_folder not in sys.path: sys.path.append(script_folder)
+
+def check_file_path_is_folder_or_directory(file_path):
+    file_type = None
+    if os.path.isfile(file_path):
+        file_type = 'file'
+    elif os.path.isdir(file_path):
+        file_type = 'directory'
+    return file_type
 
 
 def check_if_folder_exists(my_dir):
     folder_exists = os.path.isdir(my_dir)
     return folder_exists
+
+
+def check_file_exists(my_file):
+    file_exists = os.path.isfile(my_file)
+    return file_exists
 
 
 def create_folder_if_does_not_exist(my_dir):
@@ -42,4 +41,27 @@ def get_list_of_files_in_directory(path, file_type = None, sub_folders=False):
     return text_files
 
 
+def create_csv_output_file(df, xl_file, output_folder=None, output_type=None):
+    #print('create csv output')
+    if output_type is None:
+        output_type = '.csv.'
+    output_name = xl_file.split('.xl', 1)[0] + output_type
+    #print(output_name)
+    #if output_folder is None:
+    #    output_folder = r"D:\MP\projects\bcasm\log files\traffic_intersection_outputs"
+    output_file = os.path.join(output_name, output_name)
+    df.to_csv(output_file, index=False)
+    return
 
+
+def save_dataframe_log(df, filename):
+    with open(filename, 'a', newline='') as f:
+        df.to_csv(f, mode='a', header=f.tell() == 0, index=False, encoding="utf-8", quoting=csv.QUOTE_ALL)
+    return
+
+
+def exclude_files_already_assessed(all_files, assessed_file, col_check='file_name'):
+    df_analysed = pd.read_csv(assessed_file, encoding='cp1252')
+    df_file_names = df_analysed[col_check].unique().tolist()
+    new_files = list(set(all_files) - set(df_file_names))
+    return new_files

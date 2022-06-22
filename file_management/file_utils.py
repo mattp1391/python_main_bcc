@@ -1,9 +1,5 @@
 import os
-import shutil
-
-import pandas as pd
 import re
-from typing import List, Optional
 
 
 def create_folder(path):
@@ -21,3 +17,8 @@ def replace_root(path, root, new_root):
 
     rel = os.path.relpath(path, root)
     return os.path.join(new_root, rel)
+
+
+def check_path_exists(path_to_file):
+    file_exists = os.path.exists(path_to_file)
+    return file_exists

@@ -25,7 +25,6 @@ def geocode_coordinates(address, user_agent='Engineering_Services_BCC', api='osm
     elif api.lower() == 'google':
         app = geocoders.GoogleV3(user_agent=user_agent, proxies='165.225.226.22:10170', api_key=google_geo_code_key)
         time.sleep(2)
-    print(address, api)
     location_ = app.geocode(address)
 
     if location_ is not None:
