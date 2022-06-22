@@ -1,4 +1,6 @@
 import os, sys, glob
+import pandas as pd
+import csv
 
 
 def check_file_path_is_folder_or_directory(file_path):
@@ -52,3 +54,14 @@ def create_csv_output_file(df, xl_file, output_folder=None, output_type=None):
     return
 
 
+def save_dataframe_log(df, filename):
+    with open(filename, 'a', newline='') as f:
+        df.to_csv(f, mode='a', header=f.tell() == 0, index=False, encoding="utf-8", quoting=csv.QUOTE_ALL)
+    return
+
+
+def exclude_files_already_assessed(all_files, assessed_file, col_check='file_name'):
+    df_analysed = pd.read_csv(assessed_file, encoding='cp1252')
+    df_file_names = df_analysed[col_check].unique().tolist()
+    new_files = list(set(all_files) - set(df_file_names))
+    return new_files

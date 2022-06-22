@@ -755,8 +755,9 @@ def get_matrix_1_survey_data(excel_file_path, sheet_name):
     df = df.rename(columns={'TIME|(1/4 hr end)': 'survey_time'})
     df.loc[:, 'spreadsheet_movement'] = df['spreadsheet_movement'].str.replace("direction ", "", case=False)
     df.loc[:, 'spreadsheet_movement'] = df['spreadsheet_movement'].str.split(r"\r").str[0]
+    df.loc[:, 'spreadsheet_movement'] = df['spreadsheet_movement'].str.split(r"\n").str[0]
     df.loc[:, 'spreadsheet_movement'] = np.where(df['vehicle'].str.contains(' to '), df['vehicle'], df['spreadsheet_movement'])
-    df.loc[:, 'vehicle'] = np.where(df['vehicle'].str.contains(' to '), 'peds', df['spreadsheet_movement'])
+    df.loc[:, 'vehicle'] = np.where(df['vehicle'].str.contains(' to '), 'peds', df['vehicle'])
     # df['spreadsheet_movement'] = df['spreadsheet_movement'].str.replace("direction ", "", case=False).split("\r", 1)[0]
     df['file_name'] = excel_file_path
     df['sheet_name'] = sheet_name
@@ -799,7 +800,6 @@ def get_survey_data_main(excel_file_path, sheet):
             if survey_format is not None:
                 df, movement_dict, site_info_dict = survey_functions_map[survey_format](excel_file_path,
                                                                                         sheet_name=sheet)
-
                 if movement_dict is not None:
                     if 'None' in movement_dict:
                         # ToDo: update movement dict for text boxes??
@@ -856,9 +856,12 @@ def check_text_boxes_for_movement():
     print('check_text_boxes')
 
 
-def approach_from_text_box_position(from_point, to_point):
+def approach_from_text_box_position(from_point, to_point, split_compass_45=False):
     angle = gis.compass_angle(from_point, to_point, excel_cell_format=True)
-    angle_round = int(gis.custom_round(angle, base=45))
+    if split_compass_45:
+        angle_round = int(gis.custom_round(angle, base=45))
+    else:
+        angle_round = int(gis.custom_round(angle, base=90))
     direction_dict = gis.get_direction_dict()
     direction = direction_dict[angle_round]
     return direction
@@ -1074,9 +1077,9 @@ def find_lat_long_from_meta(file_path):
     lon = wb['META']['B2'].value
     return lat, lon
 
-def exclude_files_already_assessed(all_files, assessed_file):
+def exclude_files_already_assessed(all_files, assessed_file, col_check='file_name'):
     df_analysed = pd.read_csv(assessed_file, encoding='cp1252')
-    df_file_names = df_analysed['file_name'].unique().tolist()
+    df_file_names = df_analysed[col_check].unique().tolist()
     new_files = list(set(all_files) - set(df_file_names))
     return new_files
 
@@ -1099,7 +1102,6 @@ def analyse_intersection_counts_for_saturn(file_path, sections_file, nodes_file,
             if test_run:
                 print(f)
             sheet_names = get_sheets_in_workbook(f)
-            # print(sheet_names)
             geo_location = None
 
             if sheet_names is not None:
@@ -1118,7 +1120,6 @@ def analyse_intersection_counts_for_saturn(file_path, sections_file, nodes_file,
                         movement_ijk_dict = None
                         survey_df, movement_dict, survey_info_dict = get_survey_data_main(f, sheet)
                         # print(movement_dict, survey_info_dict, survey_df)
-
                         if survey_df is not None:
                             if lat_lon is not None:
                                 lat = lat_lon[0]
@@ -1129,7 +1130,7 @@ def analyse_intersection_counts_for_saturn(file_path, sections_file, nodes_file,
                             survey_info_dict['lat'] = lat
                             survey_info_dict['lon'] = lon
                             survey_info_dict['geocode_location'] = geo_location
-
+                            #survey_df_pivot = clean_data_output(survey_df)
                             # survey_df_2 = add_site_info(survey_df, survey_info_dict, movement_dict)
                             if not test_run:
                                 save_data_log(survey_df, log_file_data)
@@ -1163,14 +1164,8 @@ def analyse_intersection_counts_for_saturn(file_path, sections_file, nodes_file,
                             movement_ijk_dict = {'excel_movement': [None], 'geographic_movement': [None],
                                                  'angle_from': [None], 'angle_to': [None], 'i': [None], 'j': [None],
                                                  'k': [None], 'log_type': [0], 'dist_to_node': None}
-                            # no data found
                             movement_log_df = pd.DataFrame.from_dict(movement_ijk_dict)
                             movement_log_df.loc[:, 'spreadsheet_approach_from_to'] = None
-
-                        # if add_to_database == 1:
-                        # output_dict =
-                        # print(intersection, movement_ijk_dict)
-                        # display(movement_log_df)
                         movement_log_df.loc[:, 'file_name'] = f
                         movement_log_df.loc[:, 'sheet_name'] = sheet
                         movement_log_df.loc[:, 'intersection'] = survey_info_dict.get('survey_site')
@@ -1196,3 +1191,47 @@ def analyse_intersection_counts_for_saturn(file_path, sections_file, nodes_file,
                             display(movement_log_df)
     # ToDo: check movements match data movements
 
+
+def clean_data_output(df):
+    df['text_check'] = df.apply(lambda row: check_is_numeric(str(row['count'])), axis=1)
+    df = df.dropna(subset = ['count'])
+    df = df[(df['vehicle'].str.lower().str.contains('ped')==False) | (df['vehicle'].str.lower().str.contains('cyclist')==False)]
+    df = df[df['text_check'].notnull()]
+    df = df.astype({'count': float})
+    display(df.head(), df.info())
+    df['survey_time'] = df['survey_time'].astype("str")
+    df['survey_time'] = df['survey_time'].str.split(' ').str[-1].str.split('.').str[0]
+    df_pivot = pd.pivot_table(df, values=['count'], columns='survey_time',
+                              index=['vehicle', 'spreadsheet_movement', 'file_name', 'sheet_name'],
+                              aggfunc={'count': np.mean})
+    df_pivot = flatten_multi_index_columns(df_pivot)
+    return df_pivot
+
+
+def flatten_multi_index_columns(df):
+    columns = df.columns.map(lambda x: '|'.join([str(i) for i in x])).tolist()
+    new_columns = []
+    for c in columns:
+        new_columns.append(c.split("|")[-1])
+
+    # df_pivot.reset_index()
+    df.columns = new_columns
+    df.reset_index()
+    return df
+
+
+def check_is_numeric(text):
+    text.strip()
+    is_number = True
+    decimal_count = 0
+    for s in text:
+        if not s.isnumeric():
+            if s != '.' and decimal_count == 0:
+                is_number = False
+            else:
+                decimal_count += 1
+
+    if is_number:
+        return text
+    else:
+        return None
