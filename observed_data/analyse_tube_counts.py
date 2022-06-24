@@ -4,7 +4,6 @@ import geopandas as gpd
 from tqdm import tqdm
 from datetime import datetime, timedelta
 import os
-from gis import osm_tools
 from IPython.display import display
 from project_tools.intersection_turn_counts import file_utls as fu
 from project_tools.intersection_turn_counts import dataframe_utls as dfu
@@ -222,9 +221,9 @@ def analyse_files_in_folder(folder, output_file, file_type=None):
             if df_file is not None:
                 if street_address is not None:
                     geo_search_text = gis.add_qld_aus_to_geolocate_text(street_address)
-                    lat, lon, location = osm_tools.geocode_coordinates(geo_search_text, api='here')
+                    lat, lon, location = gis.geocode_coordinates(geo_search_text, api='here')
                     if lat is None:
-                        lat, lon, location = osm_tools.geocode_coordinates(geo_search_text, api='google')
+                        lat, lon, location = gis.geocode_coordinates(geo_search_text, api='google')
                 # ToDo: add location to dataframe for comparison to street address.
                 direction_angle = offset_left_dict.get(direction.lower())
                 if direction_angle is not None:
