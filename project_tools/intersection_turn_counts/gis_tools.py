@@ -103,6 +103,21 @@ def find_point_at_distance_and_bearing(lat, lon, distance=1.0, bearing=0):
     return destination
 
 
+def degrees_minutes_seconds_to_decimal_degrees(degrees, minutes, seconds, direction=None):
+    if direction is None:
+        if degrees < 0: # Condition for Australia
+            direction = 'S'
+        else:
+            direction = 'E' # Condition for Australia
+    minutes_to_dec = minutes / 60
+    seconds_to_decimal =seconds / 3600
+    degrees_decimal = degrees + minutes_to_dec + seconds_to_decimal
+    if direction.lower() in ['s', 'w']:
+        degrees_decimal = -degrees_decimal
+
+    return degrees_decimal
+
+
 def angle_between(p1, p2):
     """
     find angle of a point.  NOTE THIS HAS BEEN SUPERCEDED!
@@ -614,3 +629,31 @@ def create_in_out_projections_for_conversion(in_projection_crs=None, out_project
     in_projection = pyproj.CRS(in_projection_crs)
     out_projection = pyproj.CRS(out_projection_crs)
     return in_projection, out_projection
+
+
+def create_gis_file_from_csv(csv_file, output_file, latitude_col, longitude_col, crs=None, included_cols=None,
+                             drop_duplicates=False, duplicates_subset=None, driver=None):
+    if driver is None:
+        if output_file.lower().endswith('.json'):
+            driver = 'GeoJSON'
+    if crs is None:
+        crs = 4326
+    df = pd.read_csv(csv_file, encoding='cp1252')
+    if drop_duplicates:
+        if duplicates_subset is None:
+            df.drop_duplicates()
+        else:
+            df.drop_duplicates(subset=duplicates_subset)
+    if included_cols is not None:
+        df = df[included_cols]
+        #df = df[['site', 'direction', 'lat', 'lon', 'street_address', 'file_name']].drop_duplicates(subset='file_name')
+    gdf = gpd.GeoDataFrame(df, geometry=gpd.GeoSeries.from_xy(df[longitude_col], df[latitude_col]), crs=crs)
+    gdf.to_file(output_file, driver=driver)
+
+
+def add_qld_aus_to_geolocate_text(geo_search_text):
+    if 'qld' not in geo_search_text.lower() or 'queensland' not in geo_search_text.lower():
+        geo_search_text = f'{geo_search_text}, QUEENSLAND'
+    if 'aus' not in geo_search_text.lower() or 'australia' not in geo_search_text.lower():
+        geo_search_text = f'{geo_search_text}, AUSTRALIA'
+    return geo_search_text

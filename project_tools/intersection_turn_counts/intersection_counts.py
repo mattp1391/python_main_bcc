@@ -604,14 +604,6 @@ def create_movement_dict(ws):
     return movement_dict
 
 
-def add_qld_aus_to_geolocate_text(geo_search_text):
-    if 'qld' not in geo_search_text.lower() or 'queensland' not in geo_search_text.lower():
-        geo_search_text += f'{geo_search_text}, QLD'
-    if 'aus' not in geo_search_text.lower() or 'australia' not in geo_search_text.lower():
-        geo_search_text += ', AUSTRALIA'
-    return geo_search_text
-
-
 def add_geocode(geo_search_text):
     lat, lon, location = gis.geocode_coordinates(geo_search_text, user_agent='Engineering_Services_BCC',
                                                  api='google')
@@ -1087,13 +1079,11 @@ def analyse_intersection_counts_for_saturn(file_path, sections_file, nodes_file,
                                 lat = lat_lon[0]
                                 lon = lat_lon[1]
                             else:
-                                geo_search_text = add_qld_aus_to_geolocate_text(survey_info_dict['survey_site'])
+                                geo_search_text = gis.add_qld_aus_to_geolocate_text(survey_info_dict['survey_site'])
                                 lat, lon, geo_location = add_geocode(geo_search_text)
                             survey_info_dict['lat'] = lat
                             survey_info_dict['lon'] = lon
                             survey_info_dict['geocode_location'] = geo_location
-                            #survey_df_pivot = clean_data_output(survey_df)
-                            # survey_df_2 = add_site_info(survey_df, survey_info_dict, movement_dict)
                             if not test_run:
                                 fu.save_dataframe_log(survey_df, log_file_data)
                         else:
@@ -1154,31 +1144,25 @@ def analyse_intersection_counts_for_saturn(file_path, sections_file, nodes_file,
     # ToDo: check movements match data movements
 
 
-def clean_data_output(df):
-    df['text_check'] = df.apply(lambda row: check_is_numeric(str(row['count'])), axis=1)
-    df = df.dropna(subset = ['count'])
-    df = df[(df['vehicle'].str.lower().str.contains('ped')==False) | (df['vehicle'].str.lower().str.contains('cyclist')==False)]
-    df = df[df['text_check'].notnull()]
-    df = df.astype({'count': float})
-    display(df.head(), df.info())
-    df['survey_time'] = df['survey_time'].astype("str")
-    df['survey_time'] = df['survey_time'].str.split(' ').str[-1].str.split('.').str[0]
-    df_pivot = pd.pivot_table(df, values=['count'], columns='survey_time',
-                              index=['vehicle', 'spreadsheet_movement', 'file_name', 'sheet_name'],
-                              aggfunc={'count': np.mean})
-    df_pivot = flatten_multi_index_columns(df_pivot)
+def pivot_intersection_data_file(file_name, values_col, pivot_col, index_cols, agg_func=None):
+    df = pd.read_csv(file_name, encoding='cp1252')
+    df = clean_intersection_counts_for_pivoting(df)
+    df_pivot = pd.pivot_table(df, values=values_col, columns=pivot_col,
+                              index=index_cols)
+                              # aggfunc={'count': np.mean})
+    #display(df_pivot.head())
+    #df_pivot = flatten_multi_index_columns_from_pivot(df_pivot, join_character='|',  level='bottom')
     return df_pivot
 
 
-def flatten_multi_index_columns(df):
-    columns = df.columns.map(lambda x: '|'.join([str(i) for i in x])).tolist()
-    new_columns = []
-    for c in columns:
-        new_columns.append(c.split("|")[-1])
-
-    # df_pivot.reset_index()
-    df.columns = new_columns
-    df.reset_index()
+def clean_intersection_counts_for_pivoting(df):
+    df['text_check'] = df.apply(lambda row: check_is_numeric(str(row['count'])), axis=1)
+    df = df.dropna(subset=['count'])
+    df = df[(df['vehicle'].str.lower().str.contains('ped')==False) | (df['vehicle'].str.lower().str.contains('cyclist')==False)]
+    df = df[df['text_check'].notnull()]
+    df = df.astype({'count': float})
+    df['survey_time'] = df['survey_time'].astype("str")
+    df['survey_time'] = df['survey_time'].str.split(' ').str[-1].str.split('.').str[0]
     return df
 
 

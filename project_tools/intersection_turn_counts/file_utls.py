@@ -1,4 +1,6 @@
-import os, sys, glob
+import os
+import sys
+import glob
 import pandas as pd
 import csv
 
@@ -65,3 +67,8 @@ def exclude_files_already_assessed(all_files, assessed_file, col_check='file_nam
     df_file_names = df_analysed[col_check].unique().tolist()
     new_files = list(set(all_files) - set(df_file_names))
     return new_files
+
+
+def make_clickable(url, name):
+    return '<a href="{}" rel="noopener noreferrer" target="_blank">{}</a>'.format(url, name)
+
