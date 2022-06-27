@@ -476,11 +476,11 @@ def find_nearest_position(locations, position):
 
 def find_row_positions(ws, start_range=1, end_range=31):
     row_positions = []
-    row_hieght = 0
+    row_height = 0
     for row in range(start_range, end_range):
         cell_height = ws.cells(row, 1).Height
-        row_positions.append(row_hieght)
-        row_hieght += cell_height
+        row_positions.append(row_height)
+        row_height += cell_height
     return row_positions
 
 
@@ -575,7 +575,7 @@ def create_movement_dict(ws):
                 angle_round = int(gis.custom_round(angle, base=45))
                 direction_dict = gis.get_direction_dict()
                 direction = direction_dict[angle_round]
-                #print('arrow info: ', sh.name)
+                # print('arrow info: ', sh.name)
                 movement, approach = find_turn_movement(ws, cell, arrow_direction=direction, arrow_points=line_pos,
                                                         text_dict=text_box_dict)
                 # correct direction for slip turn arrows
@@ -602,14 +602,6 @@ def create_movement_dict(ws):
                             direction = 'S'
                 movement_dict[str(movement)] = f"{approach}_{direction}"
     return movement_dict
-
-
-def add_qld_aus_to_geolocate_text(geo_search_text):
-    if 'qld' not in geo_search_text.lower() or 'queensland' not in geo_search_text.lower():
-        geo_search_text += f'{geo_search_text}, QLD'
-    if 'aus' not in geo_search_text.lower() or 'australia' not in geo_search_text.lower():
-        geo_search_text += ', AUSTRALIA'
-    return geo_search_text
 
 
 def add_geocode(geo_search_text):
@@ -649,8 +641,8 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
     DataFrame: {movement_1: Origin_Destination, movement_2, origin_destination}
     """
     xl = Dispatch('Excel.Application')
-    #xl.Interactive = False
-    #xl.Visible = False
+    # xl.Interactive = False
+    # xl.Visible = False
     wb = xl.Workbooks.Open(Filename=excel_file_path)
     ws = wb.Worksheets(sheet_name)
     movement_dict = create_movement_dict(ws)
@@ -672,8 +664,8 @@ def get_austraffic_1_survey_data(excel_file_path, sheet_name):
         df_melt['file_name'] = excel_file_path
         df_melt['sheet_name'] = sheet_name
         wb.Close(True)
-        #xl.Interactive = True
-        #xl.Visible = True
+        # xl.Interactive = True
+        # xl.Visible = True
 
     return df_melt, movement_dict, survey_info_dict
 
@@ -683,7 +675,7 @@ def get_ttm_1_survey_data(excel_file_path, sheet_name):
     return df
 
 
-def find_count_data_matrix(excel_file_path, sheet_name, ws, row_from, header_strings, df_end_strings, col_no=2):
+def find_count_data_matrix(excel_file_path, sheet_name, ws, row_from, col_no=2):
     search_for_additional_data = True
     spreadsheet_df = None
     dataframes = []
@@ -740,8 +732,7 @@ def get_matrix_1_survey_data(excel_file_path, sheet_name):
     # xl.Visible = False
     wb = xl.Workbooks.Open(Filename=excel_file_path)
     ws = wb.Worksheets(sheet_name)
-    df = find_count_data_matrix(excel_file_path, sheet_name, ws, row_from=1, header_strings='Approach',
-                                df_end_strings=[None, 'Peak', 'Total'])
+    df = find_count_data_matrix(excel_file_path, sheet_name, ws, row_from=1)
     if df is None:
         wb.Close(True)
         movement_dict = None
@@ -1013,7 +1004,7 @@ def find_point_positions(hor, ver, top, bottom, left, right):
     return line_pos
 
 
-def get_excel_image(file_path, sheet_name, range=None):
+def get_excel_image(file_path, sheet_name):
     xl = Dispatch('Excel.Application')
     wb = xl.Workbooks.Open(file_path)
     ws = wb.Worksheets[sheet_name]
@@ -1028,44 +1019,6 @@ def check_approach_match(xl_approaches, gis_approaches_4, gis_approaches_8=None)
     print('todo')
 
 
-def check_log_file_exists_create_return_df(file_path, log_type=0):
-    """
-    Checks if log file exists.  If the file does not exist, a new log file is created.  The func
-    Parameters
-    ----------
-    file_path (string): filepath as string
-
-    Returns
-    -------
-
-    """
-
-    path_type = fu.check_file_path_is_folder_or_directory(file_path)
-    file_exists = False
-    df = None
-    if path_type == 'file':
-        file_exists = True
-    if not file_exists:
-        with open(file_path, 'w') as f:
-            if log_type == 0 or log_type.lower() == 'movement':
-                f.write('"file","sheet","intersection","movement","i","j","k","comments"')
-            elif log_type == 1 or log_type.lower() == 'data':
-                f.write('"file","sheet","intersection","movement","i","j","k","comments"')
-    return
-
-
-def save_data_log(df, filename):
-    with open(filename, 'a', newline='') as f:
-        df.to_csv(f, mode='a', header=f.tell() == 0, index=False, encoding="utf-8", quoting=csv.QUOTE_ALL)
-    return
-
-
-def save_movement_log(df, filename):
-    with open(filename, 'a', newline='') as f:
-        df.to_csv(f, mode='a', header=f.tell() == 0, index=False, encoding="utf-8", quoting=csv.QUOTE_ALL)
-    return
-
-
 def find_files_assessed(df):
     files_assessed = df[df['file'].notnull()]
     return files_assessed
@@ -1076,6 +1029,7 @@ def find_lat_long_from_meta(file_path):
     lat = wb['META']['A2'].value
     lon = wb['META']['B2'].value
     return lat, lon
+
 
 def exclude_files_already_assessed(all_files, assessed_file, col_check='file_name'):
     df_analysed = pd.read_csv(assessed_file, encoding='cp1252')
@@ -1125,15 +1079,13 @@ def analyse_intersection_counts_for_saturn(file_path, sections_file, nodes_file,
                                 lat = lat_lon[0]
                                 lon = lat_lon[1]
                             else:
-                                geo_search_text = add_qld_aus_to_geolocate_text(survey_info_dict['survey_site'])
+                                geo_search_text = gis.add_qld_aus_to_geolocate_text(survey_info_dict['survey_site'])
                                 lat, lon, geo_location = add_geocode(geo_search_text)
                             survey_info_dict['lat'] = lat
                             survey_info_dict['lon'] = lon
                             survey_info_dict['geocode_location'] = geo_location
-                            #survey_df_pivot = clean_data_output(survey_df)
-                            # survey_df_2 = add_site_info(survey_df, survey_info_dict, movement_dict)
                             if not test_run:
-                                save_data_log(survey_df, log_file_data)
+                                fu.save_dataframe_log(survey_df, log_file_data)
                         else:
                             survey_info_dict = {'survey_site': None, 'survey_date': None, 'survey_weather': None,
                                                 'lat': None, 'lon': None, 'geocode_location': None}
@@ -1186,37 +1138,31 @@ def analyse_intersection_counts_for_saturn(file_path, sections_file, nodes_file,
                              'survey_date', 'day', 'weather', 'geocode_location', 'dist_to_node', 'lat', 'lon', 'angle_from', 'angle_to', 'i',
                              'j', 'k', 'log_type', 'file_name', 'sheet_name', 'map_info_location']]
                         if not test_run:
-                            save_movement_log(movement_log_df.sort_values(by=['excel_movement']), log_file_movements)
+                            fu.save_dataframe_log(movement_log_df.sort_values(by=['excel_movement']), log_file_movements)
                         else:
                             display(movement_log_df)
     # ToDo: check movements match data movements
 
 
-def clean_data_output(df):
-    df['text_check'] = df.apply(lambda row: check_is_numeric(str(row['count'])), axis=1)
-    df = df.dropna(subset = ['count'])
-    df = df[(df['vehicle'].str.lower().str.contains('ped')==False) | (df['vehicle'].str.lower().str.contains('cyclist')==False)]
-    df = df[df['text_check'].notnull()]
-    df = df.astype({'count': float})
-    display(df.head(), df.info())
-    df['survey_time'] = df['survey_time'].astype("str")
-    df['survey_time'] = df['survey_time'].str.split(' ').str[-1].str.split('.').str[0]
-    df_pivot = pd.pivot_table(df, values=['count'], columns='survey_time',
-                              index=['vehicle', 'spreadsheet_movement', 'file_name', 'sheet_name'],
-                              aggfunc={'count': np.mean})
-    df_pivot = flatten_multi_index_columns(df_pivot)
+def pivot_intersection_data_file(file_name, values_col, pivot_col, index_cols, agg_func=None):
+    df = pd.read_csv(file_name, encoding='cp1252')
+    df = clean_intersection_counts_for_pivoting(df)
+    df_pivot = pd.pivot_table(df, values=values_col, columns=pivot_col,
+                              index=index_cols)
+                              # aggfunc={'count': np.mean})
+    #display(df_pivot.head())
+    #df_pivot = flatten_multi_index_columns_from_pivot(df_pivot, join_character='|',  level='bottom')
     return df_pivot
 
 
-def flatten_multi_index_columns(df):
-    columns = df.columns.map(lambda x: '|'.join([str(i) for i in x])).tolist()
-    new_columns = []
-    for c in columns:
-        new_columns.append(c.split("|")[-1])
-
-    # df_pivot.reset_index()
-    df.columns = new_columns
-    df.reset_index()
+def clean_intersection_counts_for_pivoting(df):
+    df['text_check'] = df.apply(lambda row: check_is_numeric(str(row['count'])), axis=1)
+    df = df.dropna(subset=['count'])
+    df = df[(df['vehicle'].str.lower().str.contains('ped')==False) | (df['vehicle'].str.lower().str.contains('cyclist')==False)]
+    df = df[df['text_check'].notnull()]
+    df = df.astype({'count': float})
+    df['survey_time'] = df['survey_time'].astype("str")
+    df['survey_time'] = df['survey_time'].str.split(' ').str[-1].str.split('.').str[0]
     return df
 
 
