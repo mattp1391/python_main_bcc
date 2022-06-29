@@ -264,7 +264,8 @@ def create_dataframe_matrix(excel_file_path, sheet_name, header_end, end_df_row,
         col_2 = data_df.columns[1].lower()
         col_3 = data_df.columns[2].lower()
         if col_1 == col_2 == col_3 == 'direction|time period':
-            data_df = data_df.iloc[:, ~data_df.columns.duplicated()]
+            #data_df = data_df.iloc[:, ~data_df.columns.duplicated()]
+            data_df = data_df.iloc[:, 2:]
             data_df = data_df.rename(columns={data_df.columns[0]: 'TIME|(1/4 hr end)'})
         df_melt = data_df.melt(id_vars=['TIME|(1/4 hr end)'], var_name='spreadsheet_movement|vehicle',
                                value_name='count')
@@ -279,7 +280,6 @@ def create_dataframe_matrix(excel_file_path, sheet_name, header_end, end_df_row,
         df_melt['spreadsheet_movement'] = np.where(
             df_melt['temp_spreadsheet_movement'].str.lower().str.contains('pedestrian'),
             df_melt['temp_vehicle'], df_melt['temp_spreadsheet_movement'])
-
         return df_melt
 
 
