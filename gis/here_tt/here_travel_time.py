@@ -230,6 +230,12 @@ def create_crash_data_df(df, date_column, start_date_str, end_date_str, date_for
     return df2
 
 
+def find_nearest_intersection(df1, df2):
+    df_joined = gpd.sjoin_nearest(df1, df2, max_distance=200, distance_col='join_distance')
+    #ToDo: update function and check this works
+    return df_joined
+
+
 def get_here_10m(df_dict, here_10m_table=None):
     if here_10m_table is None:
         here_10m_name = 'Here_2001_Link_10m'
