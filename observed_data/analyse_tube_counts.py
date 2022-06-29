@@ -297,6 +297,6 @@ def create_geojson_from_tube_analysis_csv(csv_file, geo_json_file):
         geo_frames.append(mini_grouped_df)
     gdf = pd.concat(geo_frames)
     gdf = gpd.GeoDataFrame(gdf, geometry=gpd.GeoSeries.from_xy(gdf['lon'], gdf['lat']), crs=4326)
-    gdf.to_file(geo_json_file, driver="GeoJSON")
+    gdf.to_file(geo_json_file)
     return
 
