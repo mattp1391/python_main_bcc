@@ -72,3 +72,19 @@ def exclude_files_already_assessed(all_files, assessed_file, col_check='file_nam
 def make_clickable(url, name):
     return '<a href="{}" rel="noopener noreferrer" target="_blank">{}</a>'.format(url, name)
 
+
+def get_file_size_in_bytes(file_path):
+    """
+    Get size of file at given path in bytes
+    "
+    Parameters
+    ----------
+    file_path
+
+    Returns
+    -------
+
+    """
+    size = os.path.getsize(file_path)
+    return size
+

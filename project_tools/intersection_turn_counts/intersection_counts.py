@@ -1053,94 +1053,98 @@ def analyse_intersection_counts_for_saturn(file_path, sections_file, nodes_file,
             files = exclude_files_already_assessed(all_files=files, assessed_file=log_file_movements)
 
         for f in tqdm(files):
+            file_size_kb = fu.get_file_size_in_bytes(f)/1000
             if test_run:
                 print(f)
-            sheet_names = get_sheets_in_workbook(f)
-            geo_location = None
 
-            if sheet_names is not None:
-                if 'META' in sheet_names:
-                    lat_lon = find_lat_long_from_meta(f)
-                    geo_location = 'META'
-                else:
-                    lat_lon = None
-                for sheet in sheet_names:
-                    if test_run:
-                        print('sheet: ', sheet)
-                    lat = None
-                    lon = None
-                    # print(sheet)
-                    if 'summary' not in sheet.lower():
-                        movement_ijk_dict = None
-                        survey_df, movement_dict, survey_info_dict = get_survey_data_main(f, sheet)
-                        # print(movement_dict, survey_info_dict, survey_df)
-                        if survey_df is not None:
-                            if lat_lon is not None:
-                                lat = lat_lon[0]
-                                lon = lat_lon[1]
+            if file_size_kb <= 10000:
+                sheet_names = get_sheets_in_workbook(f)
+                geo_location = None
+                if sheet_names is not None:
+                    if 'META' in sheet_names:
+                        lat_lon = find_lat_long_from_meta(f)
+                        geo_location = 'META'
+                    else:
+                        lat_lon = None
+                    for sheet in sheet_names:
+                        if test_run:
+                            print('sheet: ', sheet)
+                        lat = None
+                        lon = None
+                        # print(sheet)
+                        if 'summary' not in sheet.lower():
+                            movement_ijk_dict = None
+                            survey_df, movement_dict, survey_info_dict = get_survey_data_main(f, sheet)
+                            # print(movement_dict, survey_info_dict, survey_df)
+                            if survey_df is not None:
+                                if lat_lon is not None:
+                                    lat = lat_lon[0]
+                                    lon = lat_lon[1]
+                                else:
+                                    geo_search_text = gis.add_qld_aus_to_geolocate_text(survey_info_dict['survey_site'])
+                                    lat, lon, geo_location = add_geocode(geo_search_text)
+                                survey_info_dict['lat'] = lat
+                                survey_info_dict['lon'] = lon
+                                survey_info_dict['geocode_location'] = geo_location
+                                if not test_run:
+                                    fu.save_dataframe_log(survey_df, log_file_data)
                             else:
-                                geo_search_text = gis.add_qld_aus_to_geolocate_text(survey_info_dict['survey_site'])
-                                lat, lon, geo_location = add_geocode(geo_search_text)
-                            survey_info_dict['lat'] = lat
-                            survey_info_dict['lon'] = lon
-                            survey_info_dict['geocode_location'] = geo_location
-                            if not test_run:
-                                fu.save_dataframe_log(survey_df, log_file_data)
-                        else:
-                            survey_info_dict = {'survey_site': None, 'survey_date': None, 'survey_weather': None,
-                                                'lat': None, 'lon': None, 'geocode_location': None}
-                        if movement_dict is not None:
-                            if movement_dict == {}:
+                                survey_info_dict = {'survey_site': None, 'survey_date': None, 'survey_weather': None,
+                                                    'lat': None, 'lon': None, 'geocode_location': None}
+                            if movement_dict is not None:
+                                if movement_dict == {}:
 
+                                    movement_ijk_dict = {'excel_movement': [None], 'geographic_movement': [None],
+                                                         'angle_from': [None], 'angle_to': [None], 'i': [None], 'j': [None],
+                                                         'k': [None], 'log_type': [0.1], 'dist_to_node': None}
+                                    movement_log_df = pd.DataFrame.from_dict(movement_ijk_dict)
+                                    movement_log_df.loc[:, 'spreadsheet_approach_from_to'] = None
+
+                                else:
+                                    survey_df_2 = add_site_info(survey_df, survey_info_dict, movement_dict)
+                                    sections_gdf = gis.create_sections_gdf(sections_file)
+                                    nodes_gdf = gis.create_nodes_gdf(nodes_file, crs='epsg:4326')
+                                    sections_gdf = gis.find_node_start_and_end(sections_gdf, nodes_gdf)
+                                    node_distance_gdf = gis.find_node_distance_from_intersection(nodes_gdf,
+                                                                                                 survey_df=survey_df_2)
+                                    movement_ijk_dict = gis.find_ijk(sections_gdf, node_distance_gdf, survey_df,
+                                                                     movement_dict=movement_dict)
+                                    movement_log_df = pd.DataFrame.from_dict(movement_ijk_dict)
+                                    movement_log_df.loc[:, 'spreadsheet_approach_from_to'] = movement_log_df[
+                                        'excel_movement'].map(movement_dict)
+
+
+                            else:
                                 movement_ijk_dict = {'excel_movement': [None], 'geographic_movement': [None],
                                                      'angle_from': [None], 'angle_to': [None], 'i': [None], 'j': [None],
-                                                     'k': [None], 'log_type': [0.1], 'dist_to_node': None}
+                                                     'k': [None], 'log_type': [0], 'dist_to_node': None}
                                 movement_log_df = pd.DataFrame.from_dict(movement_ijk_dict)
                                 movement_log_df.loc[:, 'spreadsheet_approach_from_to'] = None
+                            movement_log_df.loc[:, 'file_name'] = f
+                            movement_log_df.loc[:, 'sheet_name'] = sheet
+                            movement_log_df.loc[:, 'intersection'] = survey_info_dict.get('survey_site')
+                            movement_log_df.loc[:, 'geocode_location'] = geo_location
+                            movement_log_df.loc[:, 'lat'] = lat
+                            movement_log_df.loc[:, 'lon'] = lon
+                            movement_log_df.loc[:, 'survey_date'] = survey_info_dict.get('survey_date')
+                            movement_log_df.loc[:, 'survey_date'] = pd.to_datetime(movement_log_df['survey_date'])
+                            movement_log_df.loc[:, 'day'] = np.where(movement_log_df['survey_date'].isnull(), np.nan,
+                                                                     movement_log_df['survey_date'].dt.day_name())
+                            movement_log_df.loc[:, 'weather'] = survey_info_dict.get('survey_weather')
 
+                            in_proj, out_proj = gis.create_in_out_projections_for_conversion("EPSG:4326", "EPSG:28356")
+                            movement_log_df.loc[:, 'map_info_location'] = movement_log_df.apply(
+                                lambda row: gis.add_map_info_coords(row['lat'], row['lon'], in_proj, out_proj), axis=1)
+                            movement_log_df = movement_log_df[
+                                ['intersection', 'excel_movement', 'spreadsheet_approach_from_to', 'geographic_movement',
+                                 'survey_date', 'day', 'weather', 'geocode_location', 'dist_to_node', 'lat', 'lon', 'angle_from', 'angle_to', 'i',
+                                 'j', 'k', 'log_type', 'file_name', 'sheet_name', 'map_info_location']]
+                            if not test_run:
+                                fu.save_dataframe_log(movement_log_df.sort_values(by=['excel_movement']), log_file_movements)
                             else:
-                                survey_df_2 = add_site_info(survey_df, survey_info_dict, movement_dict)
-                                sections_gdf = gis.create_sections_gdf(sections_file)
-                                nodes_gdf = gis.create_nodes_gdf(nodes_file, crs='epsg:4326')
-                                sections_gdf = gis.find_node_start_and_end(sections_gdf, nodes_gdf)
-                                node_distance_gdf = gis.find_node_distance_from_intersection(nodes_gdf,
-                                                                                             survey_df=survey_df_2)
-                                movement_ijk_dict = gis.find_ijk(sections_gdf, node_distance_gdf, survey_df,
-                                                                 movement_dict=movement_dict)
-                                movement_log_df = pd.DataFrame.from_dict(movement_ijk_dict)
-                                movement_log_df.loc[:, 'spreadsheet_approach_from_to'] = movement_log_df[
-                                    'excel_movement'].map(movement_dict)
-
-
-                        else:
-                            movement_ijk_dict = {'excel_movement': [None], 'geographic_movement': [None],
-                                                 'angle_from': [None], 'angle_to': [None], 'i': [None], 'j': [None],
-                                                 'k': [None], 'log_type': [0], 'dist_to_node': None}
-                            movement_log_df = pd.DataFrame.from_dict(movement_ijk_dict)
-                            movement_log_df.loc[:, 'spreadsheet_approach_from_to'] = None
-                        movement_log_df.loc[:, 'file_name'] = f
-                        movement_log_df.loc[:, 'sheet_name'] = sheet
-                        movement_log_df.loc[:, 'intersection'] = survey_info_dict.get('survey_site')
-                        movement_log_df.loc[:, 'geocode_location'] = geo_location
-                        movement_log_df.loc[:, 'lat'] = lat
-                        movement_log_df.loc[:, 'lon'] = lon
-                        movement_log_df.loc[:, 'survey_date'] = survey_info_dict.get('survey_date')
-                        movement_log_df.loc[:, 'survey_date'] = pd.to_datetime(movement_log_df['survey_date'])
-                        movement_log_df.loc[:, 'day'] = np.where(movement_log_df['survey_date'].isnull(), np.nan,
-                                                                 movement_log_df['survey_date'].dt.day_name())
-                        movement_log_df.loc[:, 'weather'] = survey_info_dict.get('survey_weather')
-
-                        in_proj, out_proj = gis.create_in_out_projections_for_conversion("EPSG:4326", "EPSG:28356")
-                        movement_log_df.loc[:, 'map_info_location'] = movement_log_df.apply(
-                            lambda row: gis.add_map_info_coords(row['lat'], row['lon'], in_proj, out_proj), axis=1)
-                        movement_log_df = movement_log_df[
-                            ['intersection', 'excel_movement', 'spreadsheet_approach_from_to', 'geographic_movement',
-                             'survey_date', 'day', 'weather', 'geocode_location', 'dist_to_node', 'lat', 'lon', 'angle_from', 'angle_to', 'i',
-                             'j', 'k', 'log_type', 'file_name', 'sheet_name', 'map_info_location']]
-                        if not test_run:
-                            fu.save_dataframe_log(movement_log_df.sort_values(by=['excel_movement']), log_file_movements)
-                        else:
-                            display(movement_log_df)
+                                display(movement_log_df)
+            else:
+                print(f'file "{f}" not analysed.  File size suggests it is not a manual traffic count.')
     # ToDo: check movements match data movements
 
 
