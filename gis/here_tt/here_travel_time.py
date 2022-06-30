@@ -42,8 +42,8 @@ def import_gpkg_layers(file_name, layer_list):
 
     Returns
     -------
-    dictionary of geo-dataframes or dataframes consisting of the layer name and the relevant geo dataframe (if spatial) or pandas
-    dataframe.
+    dictionary of geo-dataframes or dataframes consisting of the layer name and the relevant geo dataframe (if spatial)
+    or pandas dataframe.
     """
     output_dict = {}
     for layer in tqdm(layer_list, desc=' loading layers from .gpkg file'):
