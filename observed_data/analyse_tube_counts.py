@@ -60,6 +60,7 @@ def obtain_tube_data(file_name, street_address):
     headings_found = False
     headings = None
     df = None
+    first_date = True
     with open(file_name, "r") as f:
         for line in f:
             if site is None:
@@ -97,7 +98,10 @@ def obtain_tube_data(file_name, street_address):
                 first_token = str(line_str.split(' ')[0])
                 if len(first_token) == 4:
                     if first_token == start_time:
-                        analysis_date = analysis_date + timedelta(days=1)
+                        if first_date:
+                            first_date = False
+                        else:
+                            analysis_date = analysis_date + timedelta(days=1)
                     new_row = [site, direction, analysis_date.strftime('%Y-%m-%d')]
                     new_row = new_row + line_str.split(' ')
                     df.loc[len(df)] = new_row[
@@ -297,6 +301,6 @@ def create_geojson_from_tube_analysis_csv(csv_file, geo_json_file):
         geo_frames.append(mini_grouped_df)
     gdf = pd.concat(geo_frames)
     gdf = gpd.GeoDataFrame(gdf, geometry=gpd.GeoSeries.from_xy(gdf['lon'], gdf['lat']), crs=4326)
-    gdf.to_file(geo_json_file, driver="GeoJSON")
+    gdf.to_file(geo_json_file)
     return
 
