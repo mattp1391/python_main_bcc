@@ -42,8 +42,8 @@ def import_gpkg_layers(file_name, layer_list):
 
     Returns
     -------
-    dictionary of geo-dataframes or dataframes consisting of the layer name and the relevant geo dataframe (if spatial) or pandas
-    dataframe.
+    dictionary of geo-dataframes or dataframes consisting of the layer name and the relevant geo dataframe (if spatial)
+    or pandas dataframe.
     """
     output_dict = {}
     for layer in tqdm(layer_list, desc=' loading layers from .gpkg file'):
@@ -228,6 +228,12 @@ def create_crash_data_df(df, date_column, start_date_str, end_date_str, date_for
     df2.loc[:, date_column] = pd.to_datetime(df2[date_column], format=date_format).dt.date
     df2 = df2[(df2[date_column] > start_date) & (df2[date_column] <= end_date)]
     return df2
+
+
+def find_nearest_intersection(df1, df2):
+    df_joined = gpd.sjoin_nearest(df1, df2, max_distance=200, distance_col='join_distance')
+    #ToDo: update function and check this works
+    return df_joined
 
 
 def get_here_10m(df_dict, here_10m_table=None):
