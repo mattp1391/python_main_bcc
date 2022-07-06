@@ -714,18 +714,18 @@ def get_matrix_1_survey_data(excel_file_path, sheet_name):
                      '2': 'S_N',
                      '3': 'S_E',
                      '3U': 'S_S',
-                     '4': 'E_W',
-                     '5': 'E_N',
-                     '6': 'E_E',
-                     '6U': 'E_S',
-                     '7': 'N_W',
-                     '8': 'N_N',
-                     '9': 'N_E',
-                     '9U': 'N_S',
-                     '10': 'W_W',
-                     '11': 'W_N',
-                     '12': 'W_E',
-                     '12U': 'W_S'
+                     '4': 'E_S',
+                     '5': 'E_W',
+                     '6': 'E_N',
+                     '6U': 'E_E',
+                     '7': 'N_E',
+                     '8': 'N_S',
+                     '9': 'N_W',
+                     '9U': 'N_N',
+                     '10': 'W_N',
+                     '11': 'W_E',
+                     '12': 'W_S',
+                     '12U': 'W_W'
                      }
     xl = Dispatch('Excel.Application')
     # xl.Interactive = False

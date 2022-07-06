@@ -3,6 +3,8 @@ import numpy as np
 import geopandas as gpd
 from tqdm import tqdm
 from datetime import date, datetime
+import shapely
+
 import sys
 from IPython.core.display import display
 
@@ -209,7 +211,7 @@ def find_link_direction(lat_a, lon_a, lat_b, lon_b, t_f_dir):
 def create_intersection_centroids(df, owners_filter, owner_col, signal_filter, signal_col):
     df = df[df[owner_col].isin(owners_filter)]
     df = df[df[signal_col].isin(signal_filter)]
-    df.loc[:, 'Buffer_m'] = df['Buffer_m']*2
+    # df.loc[:, 'Buffer_m'] = df['Buffer_m']/2 # This has been excluded as it appears to be undone later in KNIME
     return df
 
 
@@ -231,12 +233,31 @@ def create_crash_data_df(df, date_column, start_date_str, end_date_str, date_for
 
 
 def find_nearest_intersection(df1, df2):
-    df_joined = gpd.sjoin_nearest(df1, df2, max_distance=200, distance_col='join_distance')
+    #gdf_node_map = gdf_node.to_crs(epsg=3857)
+    df_joined = gpd.sjoin_nearest(df1.to_crs(epsg=28356), df2.to_crs(epsg=28356), how='left', distance_col='join_distance')
+    type_dict = {'id': int, 'SUBURB_NAM': str, 'Group Name': str, 'WARD': str, 'Crash_Numb': str}
+    df_joined = df_joined[df_joined['Buffer_m'] >= df_joined['join_distance']]
+    #df_joined = df_joined[['id', 'SUBURB_NAM', 'Group Name', 'WARD', 'Crash_Numb']].astype(type_dict)
+    #df_joined = df_joined.drop(['index_right', 'index_left'], axis=1)
+
     #ToDo: update function and check this works
     return df_joined
 
 
-def get_here_10m(df_dict, here_10m_table=None):
-    if here_10m_table is None:
-        here_10m_name = 'Here_2001_Link_10m'
+def get_here_10m(df, road_types=None):
+    return df
 
+
+def find_lats_longs_dataframe(feature):
+    lats = []
+    lons = []
+    linestrings = []
+    if isinstance(feature, shapely.geometry.linestring.LineString):
+        linestrings = [feature]
+    elif isinstance(feature, shapely.geometry.multilinestring.MultiLineString):
+        linestrings = feature.geoms
+    for linestring in linestrings:
+        x, y = linestring.xy
+        lats = np.append(lats, y)
+        lons = np.append(lons, x)
+    return lats, lons
