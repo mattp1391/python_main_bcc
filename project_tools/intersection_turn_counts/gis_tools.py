@@ -139,7 +139,7 @@ def angle_between(p1, p2):
 
 def compass_angle(p1, p2, excel_cell_format=False):  # updated to iinclude as x and y for points individually
     """
-    find angle of a point.  NOTE THIS HAS BEEN DEPRECATED!
+    find angle of a point. !
     Parameters
     ----------
     p1(array or list): point with (x, y) or [x, y]
@@ -343,6 +343,7 @@ def find_node_distance_from_intersection(nodes_gdf, lat=None, lon=None, survey_d
         # ToDo: Create geodataframe from lat and lon
         print('NEED TO CREATE GEOPDATAFRAME FROM LAT< LON PROVIDED')
     joined_gdf = gpd.sjoin_nearest(nodes_gdf, intersection_gdf, how='inner', distance_col='join_distance')
+    # ToDo: update crs to be epsg=28356 for join.  Distances could be skewed slightly at present.
     return joined_gdf
 
 
